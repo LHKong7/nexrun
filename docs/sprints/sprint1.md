@@ -1,6 +1,6 @@
 # Sprint 1 Single Agent Chat
 
-Status: Planned; implementation not started
+Status: Implemented; final real Pi acceptance blocked by OpenAI authentication
 
 Created: 2026-11-04
 
@@ -136,7 +136,7 @@ On service restart, reconcile abandoned dispatch records and confirm that previo
 
 ## Backlog
 
-All items start as not started. P0 items are required; P1 is optional and cannot delay P0.
+P0 items are required; P1 is optional and cannot delay P0. Current implementation and verification status is recorded below.
 
 | ID | Priority | Deliverable | Depends on | Acceptance |
 | --- | --- | --- | --- | --- |
@@ -194,3 +194,25 @@ No dependency, CI gate, or application feature is considered implemented merely 
 ## Follow-up candidates
 
 After reviewing Sprint 1, choose the next slice based on observed gaps: stronger authentication and private deployment, repository/sandbox execution, richer single-Agent controls, or group conversations. Agent Teams remain deferred until single-Agent lifecycle, persistence, and permissions are reliable. Preserve the broader architecture as a target without pulling its infrastructure into this sprint.
+
+## Implementation record
+
+Verification date: 2026-11-04. This sprint is not signed off as fully complete while real Pi acceptance is blocked.
+
+| Item | Current status |
+| --- | --- |
+| S1-01 | Implemented; clean lockfile installation, startup configuration, typecheck and build verified |
+| S1-02 | Implemented; 552 exact locked artifacts inventoried, SBOM/notices generated, license gate and three rejection tests passed |
+| S1-03 | Implemented; English/Chinese catalogs, official shadcn Base UI primitives, responsive routes and contracts |
+| S1-04 | Implemented; PostgreSQL persistence, migrations and owner-scoped chat APIs verified |
+| S1-05 | Implemented; replay, idempotency, cancellation, partial persistence and conservative restart behavior verified |
+| S1-06 | Implemented; all seven mock-backed browser acceptance scenarios passed, including offline recovery and Chinese mobile IME |
+| S1-07 | Implemented; 16 deterministic Pi host tests passed, but live OpenAI/Pi acceptance is blocked by HTTP 401 authentication |
+| S1-08 | Local typecheck, lint, build and 35 automated tests passed; browser tests passed; final acceptance still depends on S1-07 |
+| S1-09 | Not started; optional refinements remain deferred |
+
+The initial browser run exposed an offline status bug. It was fixed with explicit browser offline/online handling and a fresh snapshot before reconnect; the original assertions were retained. Browser tests now use their own generated PostgreSQL schema and temporary Pi state rather than sharing development chat history.
+
+Git checkpoints: `b4a591d` records the plan; `d687f99` adds workspace and license admission; `b1e583f` adds the API and Pi host; `862924d` adds the chat UI. Later verification/runbook commits are listed in Git history.
+
+The first real Pi smoke failed safely, and a direct OpenAI authentication probe returned HTTP 401. No successful real reply or live context-retention result is claimed. Configure a valid `NEXRUN_OPENAI_API_KEY` in the ignored root `.env` and run `npm run test:pi` to complete this gate. The mock mode remains usable without a model credential. CI configuration is committed, but no remote CI execution is claimed by local checks.

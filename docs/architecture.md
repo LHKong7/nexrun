@@ -1,6 +1,6 @@
 # NexRun Architecture
 
-Status: Proposed target architecture; implementation pending
+Status: Target architecture; Sprint 1 implementation and acceptance tracked in the sprint plan
 
 Updated: 2026-11-04
 
