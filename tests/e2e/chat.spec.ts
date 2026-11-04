@@ -1,8 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
-import type { ChatSnapshot, Conversation, MessageStatus, Run } from '@nexrun/protocol';
+import type { AcceptedMessage, ChatSnapshot, Conversation, MessageStatus, Run } from '@nexrun/protocol';
 
 const unique = (label: string) => `E2E ${label} ${crypto.randomUUID().slice(0, 8)}`;
 const assistantMessages = (page: Page) => page.locator('.message-assistant');
+const expectedTurns = new WeakMap<Page, { conversationId: string; assistantOrder: number }>();
 
 test.describe.configure({ mode: 'default' });
 
@@ -24,20 +25,43 @@ async function openConversation(page: Page, conversationId: string) {
   await expect(page.locator('.connection-pill')).toHaveText('Connected');
 }
 
-async function send(page: Page, content: string) {
-  const composer = page.getByRole('textbox', { name: 'Message your Agent', exact: true });
+async function expectNextTurn(page: Page, conversationId: string) {
+  const previous = await snapshot(page, conversationId);
+  expectedTurns.set(page, { conversationId, assistantOrder: (previous.messages.at(-1)?.order ?? 0) + 2 });
+}
+
+async function send(page: Page, content: string, locale: 'en' | 'zh-CN' = 'en') {
+  const composer = page.getByRole('textbox', { name: locale === 'en' ? 'Message your Agent' : '向 Agent 发送消息', exact: true });
   await expect(composer).toBeEnabled();
   await composer.fill(content);
-  await page.getByRole('button', { name: 'Send message', exact: true }).click();
+  const conversationId = new URL(page.url()).pathname.split('/').at(-1)!;
+  await expectNextTurn(page, conversationId);
+  await page.getByRole('button', { name: locale === 'en' ? 'Send message' : '发送消息', exact: true }).click();
+}
+
+async function seedTurn(page: Page, conversationId: string, content: string): Promise<AcceptedMessage> {
+  const response = await page.request.post(`/api/conversations/${conversationId}/messages`, {
+    headers: { 'Idempotency-Key': crypto.randomUUID() }, data: { content },
+  });
+  expect(response.status()).toBe(202);
+  const accepted = await response.json() as AcceptedMessage;
+  await expect.poll(async () => {
+    const result = await page.request.get(`/api/runs/${accepted.run.id}`);
+    expect(result.ok()).toBeTruthy();
+    return (await result.json() as Run).status;
+  }, { timeout: 10_000, intervals: [25, 50, 100] }).toBe('completed');
+  return accepted;
 }
 
 async function waitForTerminal(page: Page, conversationId: string, status: MessageStatus = 'completed'): Promise<ChatSnapshot> {
+  const expected = expectedTurns.get(page);
+  if (!expected || expected.conversationId !== conversationId) throw new Error('Record the expected turn before submitting through the UI.');
   let result: ChatSnapshot | undefined;
   await expect.poll(async () => {
     result = await snapshot(page, conversationId);
-    return result.messages.filter(message => message.role === 'assistant').at(-1)?.status;
-  }, { timeout: 15_000, message: `The latest assistant message should become ${status}` }).toBe(status);
-  const last = result!.messages.filter(message => message.role === 'assistant').at(-1)!;
+    return result.messages.find(message => message.role === 'assistant' && message.order === expected.assistantOrder)?.status;
+  }, { timeout: 15_000, message: `Assistant message ${expected.assistantOrder} should become ${status}` }).toBe(status);
+  const last = result!.messages.find(message => message.role === 'assistant' && message.order === expected.assistantOrder)!;
   const article = page.locator(`[data-message-id="${last.id}"]`);
   await expect(article).toBeVisible();
   await expect(article.locator('.message-generating')).toHaveCount(0);
@@ -53,28 +77,42 @@ async function waitForPartial(page: Page) {
 
 test('streams persisted replies, retains same-chat context, and isolates another conversation', async ({ page }) => {
   const first = await createConversation(page, unique('context'));
-  const firstPrompt = unique('remember this sentence');
+  const rememberedValue = unique('remembered value');
+  const firstPrompt = `/remember ${rememberedValue}`;
   await openConversation(page, first.id);
   await send(page, firstPrompt);
   await waitForTerminal(page, first.id);
   await expect(assistantMessages(page)).toHaveCount(1);
-  await expect(assistantMessages(page).first()).toContainText(`Mock response: ${firstPrompt}`);
+  await expect(assistantMessages(page).first().locator('.markdown')).toHaveText('Value remembered for this conversation.');
+  await expect(assistantMessages(page).first()).not.toContainText(rememberedValue);
 
-  const followUp = unique('what came before');
-  await send(page, followUp);
+  const unrelatedValue = unique('unrelated private detail');
+  const unrelatedPrompt = `Suggest a brief next step without repeating this unrelated detail: ${unrelatedValue}.\nKeep this instruction in its own message.`;
+  await send(page, unrelatedPrompt);
   await waitForTerminal(page, first.id);
   await expect(assistantMessages(page)).toHaveCount(2);
-  await expect(assistantMessages(page).last()).toContainText(`Previous message in this conversation: ${firstPrompt}`);
+  await expect(assistantMessages(page).last()).not.toContainText(unrelatedValue);
+  await expect(assistantMessages(page).last()).not.toContainText(unrelatedPrompt);
+  await expect(assistantMessages(page).last()).not.toContainText(firstPrompt);
+
+  await send(page, '/context');
+  await waitForTerminal(page, first.id);
+  await expect(assistantMessages(page)).toHaveCount(3);
+  await expect(assistantMessages(page).last().locator('.markdown')).toHaveText(rememberedValue);
+  await expect(assistantMessages(page).last()).not.toContainText(unrelatedValue);
+  await expect(assistantMessages(page).last()).not.toContainText(firstPrompt);
+  await expect(page.locator('.message-user .user-content')).toHaveText([firstPrompt, unrelatedPrompt, '/context']);
 
   const second = await createConversation(page, unique('independent'));
   await openConversation(page, second.id);
   await expect(page.locator('.message')).toHaveCount(0);
-  const independentPrompt = unique('independent message');
+  const independentPrompt = '/context';
   await send(page, independentPrompt);
   const saved = await waitForTerminal(page, second.id);
   await expect(assistantMessages(page)).toHaveCount(1);
-  await expect(assistantMessages(page)).not.toContainText(firstPrompt);
-  await expect(assistantMessages(page)).not.toContainText('Previous message in this conversation:');
+  await expect(assistantMessages(page).locator('.markdown')).toHaveText('No value has been remembered in this conversation.');
+  await expect(assistantMessages(page)).not.toContainText(rememberedValue);
+  await expect(assistantMessages(page)).not.toContainText(unrelatedValue);
   expect(saved.messages.filter(message => message.role === 'user').map(message => message.content)).toEqual([independentPrompt]);
 });
 
@@ -236,6 +274,7 @@ test('preserves Chinese mobile drafts, handles IME composition, and remembers th
   await composer.press('Shift+Enter');
   await composer.pressSequentially('下一行');
   await expect(composer).toHaveValue('保留这段草稿\n下一行');
+  await expectNextTurn(page, first.id);
   await composer.press('Enter');
   await waitForTerminal(page, first.id);
   await expect(page.locator('.message-user .user-content')).toHaveText('保留这段草稿\n下一行');
@@ -252,8 +291,7 @@ test('renders safe Markdown and copies code and complete messages without changi
   const conversation = await createConversation(page, unique('safe markdown'));
   await openConversation(page, conversation.id);
   await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(page.url()).origin });
-  const prompt = `**Readable text**\n\n<script>window.__nexrunXss = 1</script>\n\n<img src="x" onerror="window.__nexrunXss = 2">\n\n[unsafe](javascript:window.__nexrunXss=3)\n\n[reference](https://example.com)`;
-  await send(page, prompt);
+  await send(page, '/markdown');
   const saved = await waitForTerminal(page, conversation.id);
   const assistant = assistantMessages(page).last();
   await expect(assistant.locator('strong')).toHaveText('Readable text');
@@ -263,9 +301,105 @@ test('renders safe Markdown and copies code and complete messages without changi
   await expect(assistant.getByRole('link', { name: 'reference' })).toHaveAttribute('href', 'https://example.com');
   await expect(assistant.getByRole('link', { name: 'reference' })).toHaveAttribute('rel', /noreferrer/);
 
-  await assistant.getByRole('button', { name: 'Copy code', exact: true }).click();
-  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("console.log('Hello from NexRun');\n");
   await assistant.getByRole('button', { name: 'Copy message', exact: true }).click();
-  const original = saved.messages.find(message => message.role === 'assistant')!.content;
+  const originalMarkdown = saved.messages.find(message => message.role === 'assistant')!.content;
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(originalMarkdown);
+
+  await send(page, '/code');
+  const codeSnapshot = await waitForTerminal(page, conversation.id);
+  const codeAssistant = assistantMessages(page).last();
+  await codeAssistant.getByRole('button', { name: 'Copy code', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("console.log('Hello from NexRun');\n");
+  await codeAssistant.getByRole('button', { name: 'Copy message', exact: true }).click();
+  const original = codeSnapshot.messages.filter(message => message.role === 'assistant').at(-1)!.content;
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(original);
+});
+
+test('answer language follows the current prompt independently of the selected UI language', async ({ page }) => {
+  const conversation = await createConversation(page, unique('answer language'));
+  await openConversation(page, conversation.id);
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  const chinesePrompt = `Please reply in Simplified Chinese. Give one brief suggestion without repeating this request. ${unique('private Chinese request')}`;
+  await send(page, chinesePrompt);
+  const chineseSnapshot = await waitForTerminal(page, conversation.id);
+  const chineseReply = chineseSnapshot.messages.filter(message => message.role === 'assistant').at(-1)!.content;
+  expect(chineseReply).toMatch(/[\u3400-\u9fff]/u);
+  expect(chineseReply).not.toContain(chinesePrompt);
+  await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeVisible();
+
+  await page.getByRole('combobox', { name: 'Language' }).selectOption('zh-CN');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN');
+  const englishPrompt = `请用英文简要回答，给出一个建议，不要重复这段请求。${unique('private English request')}`;
+  await send(page, englishPrompt, 'zh-CN');
+  const englishSnapshot = await waitForTerminal(page, conversation.id);
+  const englishReply = englishSnapshot.messages.filter(message => message.role === 'assistant').at(-1)!.content;
+  expect(englishReply).toMatch(/[A-Za-z]{3}/u);
+  expect(englishReply).not.toMatch(/[\u3400-\u9fff]/u);
+  expect(englishReply).not.toContain(englishPrompt);
+  expect(englishReply).not.toContain(chinesePrompt);
+  await expect(page.getByRole('button', { name: '发送消息', exact: true })).toBeVisible();
+  await expect(page.locator('.message-user .user-content')).toHaveText([chinesePrompt, englishPrompt]);
+
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN');
+  await expect(assistantMessages(page).first().locator('.markdown')).toHaveText(chineseReply);
+  await expect(assistantMessages(page).last().locator('.markdown')).toHaveText(englishReply);
+});
+
+test('loads earlier history in server order and merges a new reply without duplicate bubbles', async ({ page }) => {
+  test.setTimeout(60_000);
+  const conversation = await createConversation(page, unique('history pages'));
+  for (let index = 0; index < 23; index++) await seedTurn(page, conversation.id, `/remember page-${index}`);
+  const seeded = await snapshot(page, conversation.id);
+  expect(seeded.messages).toHaveLength(46);
+  await openConversation(page, conversation.id);
+  await expect(page.locator('.message')).toHaveCount(40);
+  const earlier = page.getByRole('button', { name: 'Load earlier messages', exact: true });
+  await earlier.click();
+  await expect(page.locator('.message')).toHaveCount(46);
+  await expect(earlier).toHaveCount(0);
+  expect(await page.locator('.message').evaluateAll(elements => elements.map(element => element.getAttribute('data-message-id')))).toEqual(seeded.messages.map(message => message.id));
+
+  await send(page, '/context');
+  const updated = await waitForTerminal(page, conversation.id);
+  expect(updated.messages).toHaveLength(48);
+  await expect(assistantMessages(page).last().locator('.markdown')).toHaveText('page-22');
+  await expect(page.locator('.message')).toHaveCount(48);
+  const expectedIds = updated.messages.map(message => message.id);
+  expect(await page.locator('.message').evaluateAll(elements => elements.map(element => element.getAttribute('data-message-id')))).toEqual(expectedIds);
+
+  await page.reload();
+  await expect(page.locator('.message')).toHaveCount(40);
+  await page.getByRole('button', { name: 'Load earlier messages', exact: true }).click();
+  await expect(page.locator('.message')).toHaveCount(48);
+  const restoredIds = await page.locator('.message').evaluateAll(elements => elements.map(element => element.getAttribute('data-message-id')));
+  expect(restoredIds).toEqual(expectedIds);
+  expect(new Set(restoredIds).size).toBe(restoredIds.length);
+});
+
+test('rejects empty and whitespace messages without creating a Run or changing history', async ({ page }) => {
+  const conversation = await createConversation(page, unique('input validation'));
+  await openConversation(page, conversation.id);
+  const composer = page.getByRole('textbox', { name: 'Message your Agent', exact: true });
+  const sendButton = page.getByRole('button', { name: 'Send message', exact: true });
+  await expect(sendButton).toBeDisabled();
+  await composer.fill(' \n\t ');
+  await expect(sendButton).toBeDisabled();
+  await composer.press('Enter');
+  await expect(composer).toHaveValue(' \n\t ');
+  await expect(page.locator('.message')).toHaveCount(0);
+
+  for (const content of ['', ' \n\t ', 'x'.repeat(16_001)]) {
+    const rejected = await page.request.post(`/api/conversations/${conversation.id}/messages`, {
+      headers: { 'Idempotency-Key': crypto.randomUUID() }, data: { content },
+    });
+    expect(rejected.status()).toBe(400);
+    expect((await rejected.json()).error.code).toBe('VALIDATION_ERROR');
+  }
+  const unchanged = await snapshot(page, conversation.id);
+  expect(unchanged.messages).toEqual([]);
+  expect(unchanged.activeRun).toBeNull();
+  expect(unchanged.cursor).toBe(0);
+  await page.reload();
+  await expect(page.locator('.message')).toHaveCount(0);
 });

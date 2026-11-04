@@ -24,7 +24,8 @@
     "licenses:check": "node scripts/licenses.mjs check",
     "check": "npm run typecheck && npm run lint && npm run licenses:check && npm test",
     "db:up": "docker compose up -d db",
-    "db:down": "docker compose down"
+    "db:down": "docker compose down",
+    "demo:seed": "npm run demo:seed --workspace @nexrun/api"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",
