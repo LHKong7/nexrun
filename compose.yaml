@@ -1,0 +1,18 @@
+services:
+  db:
+    image: postgres@sha256:b7587f3cb74f4f4b2a4f9d67f052edbf95eb93f4fec7c5ada3792546caaf7383
+    ports:
+      - '127.0.0.1:55439:5432'
+    environment:
+      POSTGRES_USER: nexrun
+      POSTGRES_PASSWORD: nexrun
+      POSTGRES_DB: nexrun
+    volumes:
+      - nexrun-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U nexrun -d nexrun']
+      interval: 2s
+      timeout: 3s
+      retries: 20
+volumes:
+  nexrun-postgres:

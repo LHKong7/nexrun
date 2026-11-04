@@ -1,0 +1,409 @@
+{
+  "reviewedAt": "2026-11-04",
+  "records": [
+    {
+      "name": "@aws-sdk/credential-provider-http",
+      "version": "3.972.82",
+      "license": "Apache-2.0",
+      "source": "https://raw.githubusercontent.com/aws/aws-sdk-js-v3/13b91575a838966479e1d2889917abd6aebb709c/LICENSE",
+      "revision": "13b91575a838966479e1d2889917abd6aebb709c",
+      "file": "docs/dependencies/upstream-licenses/edea91454b811f127fbdea3d86f378f6719bd372ed440abf82b232f6fca06c3d.txt",
+      "sha256": "edea91454b811f127fbdea3d86f378f6719bd372ed440abf82b232f6fca06c3d",
+      "proof": "Pinned upstream package.json at this commit matches exact npm package version and declares the same Apache-2.0 license."
+    },
+    {
+      "name": "@aws-sdk/credential-provider-login",
+      "version": "3.972.87",
+      "license": "Apache-2.0",
+      "source": "https://raw.githubusercontent.com/aws/aws-sdk-js-v3/13b91575a838966479e1d2889917abd6aebb709c/LICENSE",
+      "revision": "13b91575a838966479e1d2889917abd6aebb709c",
+      "file": "docs/dependencies/upstream-licenses/edea91454b811f127fbdea3d86f378f6719bd372ed440abf82b232f6fca06c3d.txt",
+      "sha256": "edea91454b811f127fbdea3d86f378f6719bd372ed440abf82b232f6fca06c3d",
+      "proof": "Pinned upstream package.json at this commit matches exact npm package version and declares the same Apache-2.0 license."
+    },
+    {
+      "name": "@aws-sdk/nested-clients",
+      "version": "3.997.54",
+      "license": "Apache-2.0",
+      "source": "https://raw.githubusercontent.com/aws/aws-sdk-js-v3/13b91575a838966479e1d2889917abd6aebb709c/LICENSE",
+      "revision": "13b91575a838966479e1d2889917abd6aebb709c",
+      "file": "docs/dependencies/upstream-licenses/edea91454b811f127fbdea3d86f378f6719bd372ed440abf82b232f6fca06c3d.txt",
+      "sha256": "edea91454b811f127fbdea3d86f378f6719bd372ed440abf82b232f6fca06c3d",
+      "proof": "Published generated-client artifact identifies aws-sdk-js-v3 and Apache-2.0; supplemental root license text is pinned to this upstream commit."
+    },
+    {
+      "name": "@earendil-works/pi-agent-core",
+      "version": "1.5.0",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/earendil-works/pi/v1.5.0/LICENSE",
+      "revision": "v1.5.0",
+      "file": "docs/dependencies/upstream-licenses/0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48.txt",
+      "sha256": "0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48"
+    },
+    {
+      "name": "@earendil-works/pi-ai",
+      "version": "1.5.0",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/earendil-works/pi/v1.5.0/LICENSE",
+      "revision": "v1.5.0",
+      "file": "docs/dependencies/upstream-licenses/0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48.txt",
+      "sha256": "0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48"
+    },
+    {
+      "name": "@earendil-works/pi-codemode",
+      "version": "1.5.0",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/earendil-works/pi/v1.5.0/LICENSE",
+      "revision": "v1.5.0",
+      "file": "docs/dependencies/upstream-licenses/0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48.txt",
+      "sha256": "0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48"
+    },
+    {
+      "name": "@earendil-works/pi-coding-agent",
+      "version": "1.5.0",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/earendil-works/pi/v1.5.0/LICENSE",
+      "revision": "v1.5.0",
+      "file": "docs/dependencies/upstream-licenses/0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48.txt",
+      "sha256": "0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48"
+    },
+    {
+      "name": "@earendil-works/pi-mcp",
+      "version": "1.5.0",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/earendil-works/pi/v1.5.0/LICENSE",
+      "revision": "v1.5.0",
+      "file": "docs/dependencies/upstream-licenses/0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48.txt",
+      "sha256": "0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48"
+    },
+    {
+      "name": "@earendil-works/pi-schema",
+      "version": "1.5.0",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/earendil-works/pi/v1.5.0/LICENSE",
+      "revision": "v1.5.0",
+      "file": "docs/dependencies/upstream-licenses/0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48.txt",
+      "sha256": "0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48"
+    },
+    {
+      "name": "@earendil-works/pi-telemetry",
+      "version": "1.5.0",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/earendil-works/pi/v1.5.0/LICENSE",
+      "revision": "v1.5.0",
+      "file": "docs/dependencies/upstream-licenses/0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48.txt",
+      "sha256": "0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48"
+    },
+    {
+      "name": "@earendil-works/pi-tui",
+      "version": "1.5.0",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/earendil-works/pi/v1.5.0/LICENSE",
+      "revision": "v1.5.0",
+      "file": "docs/dependencies/upstream-licenses/0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48.txt",
+      "sha256": "0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48"
+    },
+    {
+      "name": "@esbuild/aix-ppc64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md",
+      "revision": "609683d892977362a0f99026cb74b96263d728a9",
+      "file": "docs/dependencies/upstream-licenses/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
+      "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+    },
+    {
+      "name": "@esbuild/android-arm",
+      "version": "0.28.2",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md",
+      "revision": "609683d892977362a0f99026cb74b96263d728a9",
+      "file": "docs/dependencies/upstream-licenses/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
+      "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+    },
+    {
+      "name": "@esbuild/android-arm64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md",
+      "revision": "609683d892977362a0f99026cb74b96263d728a9",
+      "file": "docs/dependencies/upstream-licenses/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
+      "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+    },
+    {
+      "name": "@esbuild/android-x64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md",
+      "revision": "609683d892977362a0f99026cb74b96263d728a9",
+      "file": "docs/dependencies/upstream-licenses/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
+      "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+    },
+    {
+      "name": "@esbuild/darwin-arm64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md",
+      "revision": "609683d892977362a0f99026cb74b96263d728a9",
+      "file": "docs/dependencies/upstream-licenses/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
+      "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+    },
+    {
+      "name": "@esbuild/darwin-x64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md",
+      "revision": "609683d892977362a0f99026cb74b96263d728a9",
+      "file": "docs/dependencies/upstream-licenses/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
+      "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+    },
+    {
+      "name": "@esbuild/freebsd-arm64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md",
+      "revision": "609683d892977362a0f99026cb74b96263d728a9",
+      "file": "docs/dependencies/upstream-licenses/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
+      "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+    },
+    {
+      "name": "@esbuild/freebsd-x64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md",
+      "revision": "609683d892977362a0f99026cb74b96263d728a9",
+      "file": "docs/dependencies/upstream-licenses/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
+      "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+    },
+    {
+      "name": "@esbuild/linux-arm",
+      "version": "0.28.2",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md",
+      "revision": "609683d892977362a0f99026cb74b96263d728a9",
+      "file": "docs/dependencies/upstream-licenses/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
+      "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+    },
+    {
+      "name": "@esbuild/linux-arm64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md",
+      "revision": "609683d892977362a0f99026cb74b96263d728a9",
+      "file": "docs/dependencies/upstream-licenses/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
+      "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+    },
+    {
+      "name": "@esbuild/linux-ia32",
+      "version": "0.28.2",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md",
+      "revision": "609683d892977362a0f99026cb74b96263d728a9",
+      "file": "docs/dependencies/upstream-licenses/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
+      "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+    },
+    {
+      "name": "@esbuild/linux-loong64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md",
+      "revision": "609683d892977362a0f99026cb74b96263d728a9",
+      "file": "docs/dependencies/upstream-licenses/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
+      "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+    },
+    {
+      "name": "@esbuild/linux-mips64el",
+      "version": "0.28.2",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md",
+      "revision": "609683d892977362a0f99026cb74b96263d728a9",
+      "file": "docs/dependencies/upstream-licenses/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
+      "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+    },
+    {
+      "name": "@esbuild/linux-ppc64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md",
+      "revision": "609683d892977362a0f99026cb74b96263d728a9",
+      "file": "docs/dependencies/upstream-licenses/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
+      "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+    },
+    {
+      "name": "@esbuild/linux-riscv64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md",
+      "revision": "609683d892977362a0f99026cb74b96263d728a9",
+      "file": "docs/dependencies/upstream-licenses/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
+      "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+    },
+    {
+      "name": "@esbuild/linux-s390x",
+      "version": "0.28.2",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md",
+      "revision": "609683d892977362a0f99026cb74b96263d728a9",
+      "file": "docs/dependencies/upstream-licenses/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
+      "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+    },
+    {
+      "name": "@esbuild/linux-x64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md",
+      "revision": "609683d892977362a0f99026cb74b96263d728a9",
+      "file": "docs/dependencies/upstream-licenses/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
+      "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+    },
+    {
+      "name": "@esbuild/netbsd-arm64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md",
+      "revision": "609683d892977362a0f99026cb74b96263d728a9",
+      "file": "docs/dependencies/upstream-licenses/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
+      "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+    },
+    {
+      "name": "@esbuild/netbsd-x64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md",
+      "revision": "609683d892977362a0f99026cb74b96263d728a9",
+      "file": "docs/dependencies/upstream-licenses/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
+      "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+    },
+    {
+      "name": "@esbuild/openbsd-arm64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md",
+      "revision": "609683d892977362a0f99026cb74b96263d728a9",
+      "file": "docs/dependencies/upstream-licenses/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
+      "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+    },
+    {
+      "name": "@esbuild/openbsd-x64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md",
+      "revision": "609683d892977362a0f99026cb74b96263d728a9",
+      "file": "docs/dependencies/upstream-licenses/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
+      "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+    },
+    {
+      "name": "@esbuild/openharmony-arm64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md",
+      "revision": "609683d892977362a0f99026cb74b96263d728a9",
+      "file": "docs/dependencies/upstream-licenses/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
+      "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+    },
+    {
+      "name": "@esbuild/sunos-x64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md",
+      "revision": "609683d892977362a0f99026cb74b96263d728a9",
+      "file": "docs/dependencies/upstream-licenses/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
+      "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+    },
+    {
+      "name": "@esbuild/win32-arm64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md",
+      "revision": "609683d892977362a0f99026cb74b96263d728a9",
+      "file": "docs/dependencies/upstream-licenses/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
+      "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+    },
+    {
+      "name": "@esbuild/win32-ia32",
+      "version": "0.28.2",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md",
+      "revision": "609683d892977362a0f99026cb74b96263d728a9",
+      "file": "docs/dependencies/upstream-licenses/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
+      "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+    },
+    {
+      "name": "@esbuild/win32-x64",
+      "version": "0.28.2",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/evanw/esbuild/609683d892977362a0f99026cb74b96263d728a9/LICENSE.md",
+      "revision": "609683d892977362a0f99026cb74b96263d728a9",
+      "file": "docs/dependencies/upstream-licenses/b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681.txt",
+      "sha256": "b40ec5baec7bb34fa5b1c09521fa3cd52d5fad7adafed74932a2010d3612a681"
+    },
+    {
+      "name": "@humanfs/types",
+      "version": "0.15.0",
+      "license": "Apache-2.0",
+      "source": "https://raw.githubusercontent.com/humanwhocodes/humanfs/85069f193cbacc371c3beb649ce746f8c5a493be/packages/core/LICENSE",
+      "revision": "85069f193cbacc371c3beb649ce746f8c5a493be",
+      "file": "docs/dependencies/upstream-licenses/c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4.txt",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "proof": "Exact release source and shipped README declare Apache 2.0; shared upstream full Apache license text supplied from the same source commit. Preserve shipped README attribution."
+    },
+    {
+      "name": "abstract-logging",
+      "version": "2.0.1",
+      "license": "MIT",
+      "source": "https://jsumners.mit-license.org/",
+      "revision": "publisher-linked-license",
+      "file": "docs/dependencies/upstream-licenses/6aaef275a56a7825f7d719a3746877c5f670363c41a42afd0e468f37d3516020.txt",
+      "sha256": "6aaef275a56a7825f7d719a3746877c5f670363c41a42afd0e468f37d3516020",
+      "proof": "Full license linked by the shipped Readme.md License section."
+    },
+    {
+      "name": "imurmurhash",
+      "version": "0.1.4",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/jensyt/imurmurhash-js/0.1.4/LICENSE",
+      "revision": "0.1.4",
+      "file": "docs/dependencies/upstream-licenses/fa0943ddcaa857d901a9eb92254d89876297ecdfbc884d294a927df08ebcbbe8.txt",
+      "sha256": "fa0943ddcaa857d901a9eb92254d89876297ecdfbc884d294a927df08ebcbbe8"
+    },
+    {
+      "name": "natural-compare",
+      "version": "1.4.0",
+      "license": "MIT",
+      "source": "https://lauri.rooden.ee/mit-license.txt",
+      "revision": "publisher-linked-license",
+      "file": "docs/dependencies/upstream-licenses/353fe762ba595bf1ffe786acf0f5984bb164205901d74f258af195fc8228c67d.txt",
+      "sha256": "353fe762ba595bf1ffe786acf0f5984bb164205901d74f258af195fc8228c67d",
+      "proof": "Full license linked by the shipped README.md Licence section; copyright is retained there."
+    },
+    {
+      "name": "proxy-agent-negotiate",
+      "version": "1.1.0",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/TooTallNate/proxy-agents/b7e5f7ccce1a3ac5b339cc4c587974e8989cbc16/packages/proxy-agent/LICENSE",
+      "revision": "b7e5f7ccce1a3ac5b339cc4c587974e8989cbc16",
+      "file": "docs/dependencies/upstream-licenses/8d8c55319c7729d57be811c747452636688d54f19701ee0752b6b15ad3771d9a.txt",
+      "sha256": "8d8c55319c7729d57be811c747452636688d54f19701ee0752b6b15ad3771d9a",
+      "proof": "Source commit obtained from npm signed SLSA provenance; generated negotiate package declares MIT, and the same publisher supplies full MIT text in the adjacent proxy-agent package."
+    },
+    {
+      "name": "standardwebhooks",
+      "version": "1.1.1",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/standard-webhooks/standard-webhooks/b4d2c14fc5b4ccff3ff271e3b087dff812254c59/LICENSE",
+      "revision": "b4d2c14fc5b4ccff3ff271e3b087dff812254c59",
+      "file": "docs/dependencies/upstream-licenses/c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4.txt",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "name": "dlv",
+      "version": "1.1.3",
+      "license": "MIT",
+      "source": "https://raw.githubusercontent.com/developit/dlv/e636db817a96e4ca4710b407163fb992748b3b80/README.md#license",
+      "revision": "publisher-release-evidence",
+      "file": "docs/dependencies/upstream-licenses/3b664e0632cf4e8f2384757463c9bdf84e52f2117dcb151ffbda1d7ea0cd6d2b.txt",
+      "sha256": "3b664e0632cf4e8f2384757463c9bdf84e52f2117dcb151ffbda1d7ea0cd6d2b",
+      "proof": "Exact release README explicitly grants MIT. Reproduced standard MIT text with release-manifest author attribution, retaining the original license declaration; canonical terms: https://opensource.org/license/mit."
+    }
+  ]
+}

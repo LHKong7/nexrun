@@ -1,0 +1,35 @@
+{
+  "retrievedAt": "2026-11-04",
+  "licenseSource": "https://raw.githubusercontent.com/shadcn-ui/ui/4aaea19d9cff3e0908e12a8c1d504b8c5ec34610/LICENSE.md",
+  "licenseSha256": "1564074e13439397221ffd522e2e504d56561994a23d371aa5e3ad43e4f5423f",
+  "primitiveBase": "Base UI",
+  "components": [
+    {
+      "path": "apps/web/src/components/ui/button.tsx",
+      "source": "https://ui.shadcn.com/r/styles/base-nova/button.json",
+      "registrySha256": "9ba7e870178813f0552b818a913a2792fb500c779e36395740b4973e3025d427",
+      "originalSourceSha256": "313353436d0fcc8e44ab470adb614b9fd013d28626f624328ea0d66d41a6c81b",
+      "installedSha256": "ceac52a3059a365cf34b72afc2b48aec876c3e934ec9e36bf3b2c9ae30778525",
+      "license": "MIT",
+      "modifications": "Added source attribution and changed cn import to local @/lib/utils; component remains based on official Base UI source."
+    },
+    {
+      "path": "apps/web/src/components/ui/input.tsx",
+      "source": "https://ui.shadcn.com/r/styles/base-nova/input.json",
+      "registrySha256": "bbad1bba130ac9750a61844eeb8f043e8a710846e07689fa85398b80a46c2741",
+      "originalSourceSha256": "dab990dfefa0ba78854ab6602ad074270dba9d7d1262184d9bfbb62bd990903b",
+      "installedSha256": "515e40be833c7ac0d2387266d55a5ce65b44be7ed6fd3d8e6ab37f874b54ef0d",
+      "license": "MIT",
+      "modifications": "Added source attribution and changed cn import to local @/lib/utils; component remains based on official Base UI source."
+    },
+    {
+      "path": "apps/web/src/components/ui/textarea.tsx",
+      "source": "https://ui.shadcn.com/r/styles/base-nova/textarea.json",
+      "registrySha256": "8f01f6bc4ee556263bae7644e8b527022fa77ff203f33a258bb47142ef7d9c81",
+      "originalSourceSha256": "82601c91ffc6c727d924162c78d7cb853114bcced4e2eb922a68ca12d4239c0f",
+      "installedSha256": "85d16155b2b6ff2cd9d3c20848ed65aea322f09a7ebfbf9c89fc2f82a26984db",
+      "license": "MIT",
+      "modifications": "Added source attribution and changed cn import to local @/lib/utils; component remains based on official Base UI source."
+    }
+  ]
+}

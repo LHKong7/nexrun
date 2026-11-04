@@ -1,0 +1,4 @@
+# Preserve byte-for-byte upstream license evidence, including original line endings.
+THIRD_PARTY_NOTICES.txt -text -whitespace
+docs/dependencies/upstream-licenses/*.txt -text -whitespace
+vendor/shadcn/LICENSE -text -whitespace
