@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { ChatEvent, Conversation, Message, Run, RuntimeConfig } from '@nexrun/protocol';
-import { ArrowDown, ArrowLeft, ArrowUp, Archive, ChevronDown, ChevronRight, CircleAlert, Copy, Globe2, Lightbulb, MessageSquare, Pencil, PenLine, Plus, RefreshCw, Sparkles, Square, X } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowUp, Archive, ChevronDown, ChevronRight, CircleAlert, Copy, Globe2, Lightbulb, MessageSquare, Pencil, PenLine, Plus, RefreshCw, Settings2, Sparkles, Square, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -19,6 +19,7 @@ import { Toaster, toast as toastManager } from '@/components/ui/toast';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { ConversationDialog, type ConversationAction } from './components/ConversationDialog';
 import { MarkdownMessage } from './components/MarkdownMessage';
+import { AdminSettingsPage } from './components/AdminSettingsPage';
 import { api, RequestError } from './lib/api';
 import { errorKey, translate, type Locale, type TranslationKey } from './lib/i18n';
 
@@ -29,6 +30,7 @@ const activeStatuses = new Set(['queued', 'running', 'cancelling']);
 const terminalStatuses = new Set(['completed', 'failed', 'cancelled', 'interrupted']);
 const isActive = (run: Run | null | undefined) => Boolean(run && activeStatuses.has(run.status));
 const readPath = () => /^\/chat\/([^/]+)\/?$/.exec(window.location.pathname)?.[1] ?? null;
+const isAdminPath = () => window.location.pathname.replace(/\/$/, '') === '/admin/settings';
 const draftKey = (id: string) => `nexrun:draft:${id}`;
 function readDraft(id: string) { try { return sessionStorage.getItem(draftKey(id)) ?? ''; } catch { return ''; } }
 function storeDraft(id: string, value: string) { try { if (value) sessionStorage.setItem(draftKey(id), value); else sessionStorage.removeItem(draftKey(id)); } catch { /* Drafts can remain in memory when browser storage is unavailable. */ } }
@@ -62,6 +64,9 @@ export default function App() {
   const [locale, setLocale] = useState<Locale>(initialLocale);
   const t = useCallback((key: TranslationKey) => translate(locale, key), [locale]);
   const [selectedId, setSelectedId] = useState<string | null>(readPath);
+  const [adminOpen, setAdminOpen] = useState(isAdminPath);
+  const [adminReturnId, setAdminReturnId] = useState<string | null>(() => isAdminPath() && typeof window.history.state?.returnChatId === 'string' ? window.history.state.returnChatId : null);
+  const savedChatScroll = useRef(0);
   const selectedRef = useRef(selectedId);
   selectedRef.current = selectedId;
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -106,7 +111,15 @@ export default function App() {
     document.documentElement.lang = locale;
     try { localStorage.setItem('nexrun:locale', locale); } catch { /* Locale still applies for this session. */ }
   }, [locale]);
-  useEffect(() => { const handler = () => setSelectedId(readPath()); window.addEventListener('popstate', handler); return () => window.removeEventListener('popstate', handler); }, []);
+  useEffect(() => {
+    const handler = () => {
+      const admin = isAdminPath(); setAdminOpen(admin);
+      if (admin) setAdminReturnId(typeof window.history.state?.returnChatId === 'string' ? window.history.state.returnChatId : selectedRef.current);
+      else setSelectedId(readPath());
+    };
+    window.addEventListener('popstate', handler);
+    return () => window.removeEventListener('popstate', handler);
+  }, []);
   useEffect(() => {
     const offline = () => setNetworkOnline(false);
     const online = () => setNetworkOnline(true);
@@ -117,8 +130,18 @@ export default function App() {
   const navigate = useCallback((id: string | null) => {
     const path = id ? `/chat/${encodeURIComponent(id)}` : '/';
     if (window.location.pathname !== path) window.history.pushState({}, '', path);
-    setSelectedId(id);
+    setSelectedId(id); setAdminOpen(false);
   }, []);
+  const navigateAdmin = useCallback(() => {
+    savedChatScroll.current = scrollRef.current?.scrollTop ?? 0;
+    const id = selectedRef.current;
+    setAdminReturnId(id);
+    if (!isAdminPath()) window.history.pushState({ returnChatId: id }, '', '/admin/settings');
+    setAdminOpen(true);
+  }, []);
+  useLayoutEffect(() => {
+    if (!adminOpen && scrollRef.current) scrollRef.current.scrollTop = savedChatScroll.current;
+  }, [adminOpen]);
   const refreshList = useCallback(async () => {
     try {
       const page = await api.conversations();
@@ -234,8 +257,8 @@ export default function App() {
     else if (messages.length) setHasNewOutput(true);
   }, [messages]);
   useEffect(() => {
-    if (!snapshotLoading && selectedId && !snapshotError && window.matchMedia('(min-width: 768px)').matches) composerRef.current?.focus();
-  }, [selectedId, snapshotLoading, snapshotError]);
+    if (!adminOpen && !snapshotLoading && selectedId && !snapshotError && window.matchMedia('(min-width: 768px)').matches) composerRef.current?.focus();
+  }, [selectedId, snapshotLoading, snapshotError, adminOpen]);
   useEffect(() => {
     if (run && terminalStatuses.has(run.status)) setAnnouncement(t(run.status === 'completed' ? 'completedAnnouncement' : run.status === 'failed' ? 'failedMessage' : run.status === 'interrupted' ? 'interruptedMessage' : 'cancelledMessage'));
     else if (run) setAnnouncement(t(run.status === 'cancelling' ? 'cancelling' : run.status === 'queued' ? 'queued' : 'generating'));
@@ -299,7 +322,7 @@ export default function App() {
       void refreshList();
     } catch (error) {
       const code = failureCode(error);
-      if (code === 'NETWORK_ERROR' || (error instanceof RequestError && error.status >= 500 && ['INTERNAL_ERROR', 'REQUEST_FAILED'].includes(code))) setPendingSends(previous => ({ ...previous, [id]: { ...pending, state: 'uncertain' } }));
+      if (code === 'NETWORK_ERROR' || (error instanceof RequestError && error.status >= 500 && ['INTERNAL_ERROR', 'REQUEST_FAILED', 'SETTINGS_COMMIT_UNKNOWN'].includes(code))) setPendingSends(previous => ({ ...previous, [id]: { ...pending, state: 'uncertain' } }));
       else {
         setPendingSends(previous => { const updated = { ...previous }; delete updated[id]; return updated; });
         setConversationErrors(previous => ({ ...previous, [id]: code }));
@@ -334,7 +357,7 @@ export default function App() {
     </Button>
   </Card>)}</div>;
 
-  return <Toaster closeLabel={t('dismiss')} viewportLabel={t('notifications')}><TooltipProvider><SidebarProvider className={`app-shell${selectedId ? ' detail-open' : ''}`}>
+  return <Toaster closeLabel={t('dismiss')} viewportLabel={t('notifications')}><TooltipProvider><SidebarProvider className={`app-shell${selectedId && !adminOpen ? ' detail-open' : ''}${adminOpen ? ' admin-open' : ''}`}>
     <a className="skip-link" href="#conversation-main">{t('skipToChat')}</a>
     <Sidebar collapsible="none" className="sidebar" role="complementary" aria-label={t('sidebarLabel')}>
       <SidebarHeader className="chat-sidebar-header">
@@ -346,8 +369,8 @@ export default function App() {
         <ScrollArea className="conversation-list" viewportProps={{ className: 'conversation-list-viewport' }}>
           <nav aria-label={t('sidebarLabel')}>
             {listLoading ? <div className="list-skeleton" role="status" aria-label={t('loadingChats')}>{[1, 2, 3].map(value => <div key={value}><Skeleton /><Skeleton /></div>)}</div> : conversations.length === 0 && !listError ? <Empty className="sidebar-empty"><EmptyHeader><EmptyMedia variant="icon"><MessageSquare size={23} strokeWidth={1.4} /></EmptyMedia><EmptyTitle>{t('noChats')}</EmptyTitle><EmptyDescription>{t('noChatsHint')}</EmptyDescription></EmptyHeader></Empty> : <SidebarMenu>
-              {conversations.map(conversation => <SidebarMenuItem className={`conversation-row${conversation.id === selectedId ? ' selected' : ''}`} key={conversation.id}>
-                <SidebarMenuButton render={<a href={`/chat/${encodeURIComponent(conversation.id)}`} />} className="conversation-link" isActive={conversation.id === selectedId} aria-current={conversation.id === selectedId ? 'page' : undefined} onClick={event => { if (event.ctrlKey || event.metaKey || event.shiftKey) return; event.preventDefault(); navigate(conversation.id); }}>
+              {conversations.map(conversation => <SidebarMenuItem className={`conversation-row${conversation.id === selectedId && !adminOpen ? ' selected' : ''}`} key={conversation.id}>
+                <SidebarMenuButton render={<a href={`/chat/${encodeURIComponent(conversation.id)}`} />} className="conversation-link" isActive={conversation.id === selectedId && !adminOpen} aria-current={conversation.id === selectedId && !adminOpen ? 'page' : undefined} onClick={event => { if (event.ctrlKey || event.metaKey || event.shiftKey) return; event.preventDefault(); navigate(conversation.id); }}>
                   <MessageSquare size={16} className="conversation-icon" strokeWidth={1.7} /><span className="conversation-text"><span className="conversation-title">{conversation.title || t('untitled')}</span><span className="conversation-preview">{conversation.preview || t('newConversation')}</span></span>{isActive(conversation.activeRun) && <span className="activity-dot" aria-label={t('generating')} />}
                 </SidebarMenuButton>
                 <div className="conversation-actions">
@@ -362,13 +385,15 @@ export default function App() {
       </SidebarContent>
       {listError && <Alert className="sidebar-error" variant="destructive"><CircleAlert size={15} /><AlertDescription>{t(errorKey(listError))}</AlertDescription><Button variant="ghost" size="icon" onClick={() => void refreshList()} aria-label={t('retry')}><RefreshCw size={14} /></Button></Alert>}
       <Separator className="sidebar-separator" />
-      <SidebarFooter className="sidebar-footer">
+      <SidebarFooter className="sidebar-footer admin-sidebar-footer"><div className="sidebar-footer-main">
         <div className="workspace-label"><Avatar className="workspace-avatar"><AvatarFallback>N</AvatarFallback></Avatar><span><strong>{t('privatePreview')}</strong><span><i />{t(config?.adapter === 'pi' ? 'agentPi' : config?.adapter === 'mock' ? 'mockMode' : 'connecting')}</span></span></div>
         <div className="language-picker"><Globe2 size={15} /><Select items={[{ value: 'en', label: t('english') }, { value: 'zh-CN', label: t('chinese') }]} value={locale} onValueChange={value => { if (value === 'en' || value === 'zh-CN') setLocale(value); }}><SelectTrigger className="language-trigger" aria-label={t('language')}><SelectValue /></SelectTrigger><SelectContent className="language-menu" side="top" align="start" alignItemWithTrigger={false}><SelectItem value="en">{t('english')}</SelectItem><SelectItem value="zh-CN">{t('chinese')}</SelectItem></SelectContent></Select></div>
+      </div><SidebarMenu className="settings-navigation"><SidebarMenuItem><SidebarMenuButton render={<a href="/admin/settings" />} className="settings-navigation-link" isActive={adminOpen} aria-current={adminOpen ? 'page' : undefined} onClick={event => { if (event.ctrlKey || event.metaKey || event.shiftKey) return; event.preventDefault(); navigateAdmin(); }}><Settings2 size={16} /><span>{t('adminSettings')}</span></SidebarMenuButton></SidebarMenuItem></SidebarMenu>
       </SidebarFooter>
     </Sidebar>
 
-    <main className="chat-main" id="conversation-main" tabIndex={-1}>
+    <main className={`chat-main${adminOpen ? ' admin-main' : ''}`} id="conversation-main" tabIndex={-1}>
+      {adminOpen ? <AdminSettingsPage locale={locale} onLocaleChange={setLocale} t={t} backLabel={adminReturnId ? t('adminBackToChat') : t('home')} onBack={() => navigate(adminReturnId)} onSaved={() => { void api.config().then(setConfig).catch(() => { /* Runtime metadata is retried on the next list refresh. */ }); void refreshList(); }} /> : <>
       <header className="chat-header"><div className="chat-heading"><Button className="mobile-back" variant="ghost" size="icon" onClick={() => navigate(null)} aria-label={t('home')}><ArrowLeft size={19} /></Button><div className="header-icon"><MessageSquare size={18} strokeWidth={1.6} /></div><div><h1>{selectedId ? currentConversation?.title || t('conversation') : t('newConversation')}</h1><p>{t('directChat')}<span>·</span>{t('textOnly')}</p></div></div><div className="header-status"><Badge variant="secondary" className="agent-pill"><Avatar className="agent-pill-icon"><AvatarFallback>π</AvatarFallback></Avatar>{agentName}</Badge>{selectedId && <Badge variant="outline" className={`connection-pill ${connection}`} role="status"><i />{t(connection === 'idle' ? 'connecting' : connection)}</Badge>}</div></header>
 
       {!selectedId ? <Empty className="home-screen"><div className="welcome-content"><div className="welcome-eyebrow"><Separator />NEXRUN<Separator /></div><div className="welcome-symbol"><BrandMark /></div><h2>{t('hello')}</h2><p className="welcome-description">{t('welcomeHint')}</p><Button className="welcome-start" onClick={() => void createChat()} disabled={creating}>{creating ? <Spinner className="spin" aria-label={t('loading')} /> : <Plus size={17} />}{t('startChat')}<ArrowUp className="diagonal-arrow" size={17} /></Button>{suggestionCards}<div className="welcome-footnote"><span className="tiny-status-dot" />{config?.adapter === 'mock' ? t('mockDescription') : config?.adapter === 'pi' ? t('piDescription') : t('loading')}</div></div><div className="home-bottom-note">{t('autoSaved')}</div></Empty> : <>
@@ -398,6 +423,7 @@ export default function App() {
           </form>
           <div className="composer-hint"><span>{t('autoSaved')}</span><span><Kbd>↵</Kbd> {t('enterToSend')}<span className="hint-divider">·</span>{t('shiftEnter')}</span></div>
         </div></div>
+      </>}
       </>}
     </main>
     <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</div>

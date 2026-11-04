@@ -1,4 +1,4 @@
-import type { AcceptedMessage, ApiError, ChatSnapshot, Conversation, ConversationPage, Run, RuntimeConfig } from '@nexrun/protocol';
+import type { AcceptedMessage, AdminAccess, AdminSettings, AdminSettingsUpdate, ApiError, ChatSnapshot, Conversation, ConversationPage, CredentialCheck, Run, RuntimeConfig } from '@nexrun/protocol';
 
 export class RequestError extends Error {
   readonly code: string;
@@ -33,7 +33,13 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+const adminHeaders = (token?: string): Record<string, string> => token ? { Authorization: `Bearer ${token}` } : {};
+
 export const api = {
+  adminAccess: (signal?: AbortSignal) => request<AdminAccess>('/api/admin/access', { signal }),
+  adminSettings: (token?: string, signal?: AbortSignal) => request<AdminSettings>('/api/admin/settings', { headers: adminHeaders(token), signal }),
+  updateAdminSettings: (settings: AdminSettingsUpdate, token?: string, signal?: AbortSignal) => request<AdminSettings>('/api/admin/settings', { method: 'PATCH', headers: adminHeaders(token), body: JSON.stringify(settings), signal }),
+  checkCredentials: (revision: number, token?: string, signal?: AbortSignal) => request<CredentialCheck>('/api/admin/connection-check', { method: 'POST', headers: adminHeaders(token), body: JSON.stringify({ revision }), signal }),
   config: (signal?: AbortSignal) => request<RuntimeConfig>('/api/config', { signal }),
   conversations: (cursor?: string, signal?: AbortSignal) => request<ConversationPage>(`/api/conversations?limit=30${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`, { signal }),
   createConversation: () => request<Conversation>('/api/conversations', { method: 'POST', body: '{}' }),
