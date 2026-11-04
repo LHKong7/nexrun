@@ -3,6 +3,9 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Check, Copy, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import type { TranslationKey } from '../lib/i18n';
 
 type Translator = (key: TranslationKey) => string;
@@ -26,12 +29,12 @@ function CodeBlock({ children, raw, t, onCopy }: { children: ReactNode; raw: str
   const child = Children.toArray(children).find(isValidElement);
   const className = child?.props && typeof child.props === 'object' && 'className' in child.props ? String(child.props.className ?? '') : '';
   const language = /language-([^\s]+)/.exec(className)?.[1] ?? '';
-  return <div className="code-block">
-    <div className="code-header"><span>{language || 'text'}</span><Button variant="ghost" size="sm" onClick={async () => {
+  return <Card className="code-block">
+    <CardHeader className="code-header"><span>{language || 'text'}</span><Button variant="ghost" size="sm" onClick={async () => {
       if (await onCopy(raw, 'code')) { setCopied(true); window.setTimeout(() => setCopied(false), 1800); }
-    }} aria-label={t('copyCode')}>{copied ? <Check size={13} /> : <Copy size={13} />}{t(copied ? 'copied' : 'copyCode')}</Button></div>
-    <pre>{children}</pre>
-  </div>;
+    }} aria-label={t('copyCode')}>{copied ? <Check size={13} /> : <Copy size={13} />}{t(copied ? 'copied' : 'copyCode')}</Button></CardHeader>
+    <CardContent className="code-content"><pre>{children}</pre></CardContent>
+  </Card>;
 }
 
 export function MarkdownMessage({ content, t, onCopy }: { content: string; t: Translator; onCopy: (text: string, kind: 'code' | 'message') => Promise<boolean> }) {
@@ -43,5 +46,12 @@ export function MarkdownMessage({ content, t, onCopy }: { content: string; t: Tr
     },
     a: ({ href, children }) => <a href={href} target={href?.startsWith('http') ? '_blank' : undefined} rel="noreferrer noopener">{children}{href?.startsWith('http') && <ExternalLink size={11} className="inline-link-icon" />}</a>,
     img: ({ src, alt }) => <a href={src} target="_blank" rel="noreferrer noopener">{t('image')}{alt ? `: ${alt}` : ''}</a>,
+    table: ({ children }) => <Table>{children}</Table>,
+    thead: ({ children }) => <TableHeader>{children}</TableHeader>,
+    tbody: ({ children }) => <TableBody>{children}</TableBody>,
+    tr: ({ children }) => <TableRow>{children}</TableRow>,
+    th: ({ children, style }) => <TableHead style={style}>{children}</TableHead>,
+    td: ({ children, style }) => <TableCell style={style}>{children}</TableCell>,
+    input: ({ checked }) => <Checkbox checked={Boolean(checked)} disabled aria-label={t(checked ? 'taskComplete' : 'taskIncomplete')} />,
   }}>{content}</ReactMarkdown></div>;
 }

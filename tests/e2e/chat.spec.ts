@@ -25,6 +25,17 @@ async function openConversation(page: Page, conversationId: string) {
   await expect(page.locator('.connection-pill')).toHaveText('Connected');
 }
 
+async function chooseLanguage(page: Page, locale: 'en' | 'zh-CN') {
+  const current = await page.locator('html').getAttribute('lang');
+  const trigger = page.getByRole('combobox', { name: current === 'zh-CN' ? '语言' : 'Language', exact: true });
+  await trigger.click();
+  const listbox = page.getByRole('listbox');
+  await expect(listbox).toBeVisible();
+  await listbox.getByRole('option', { name: locale === 'zh-CN' ? '简体中文' : 'English', exact: true }).click();
+  await expect(page.locator('html')).toHaveAttribute('lang', locale);
+  await expect(listbox).toHaveCount(0);
+}
+
 async function expectNextTurn(page: Page, conversationId: string) {
   const previous = await snapshot(page, conversationId);
   expectedTurns.set(page, { conversationId, assistantOrder: (previous.messages.at(-1)?.order ?? 0) + 2 });
@@ -238,7 +249,7 @@ test('creates, renames, and archives a conversation while retaining its history'
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(renamed);
 
   await page.locator('.conversation-row.selected').getByRole('button', { name: /^Archive chat:/ }).click();
-  const archiveDialog = page.getByRole('dialog', { name: 'Archive this conversation?' });
+  const archiveDialog = page.getByRole('alertdialog', { name: 'Archive this conversation?' });
   await archiveDialog.getByRole('button', { name: 'Archive chat', exact: true }).click();
   await expect(page).toHaveURL('/');
   await expect(page.locator(`a.conversation-link[href="/chat/${conversationId}"]`)).toHaveCount(0);
@@ -252,7 +263,7 @@ test('preserves Chinese mobile drafts, handles IME composition, and remembers th
   const first = await createConversation(page, unique('mobile first'));
   const second = await createConversation(page, unique('mobile second'));
   await page.goto('/');
-  await page.getByRole('combobox', { name: 'Language' }).selectOption('zh-CN');
+  await chooseLanguage(page, 'zh-CN');
   await expect(page.getByRole('button', { name: '新建聊天', exact: true })).toBeVisible();
   await page.locator(`a.conversation-link[href="/chat/${first.id}"]`).click();
   let composer = page.getByRole('textbox', { name: '向 Agent 发送消息', exact: true });
@@ -310,9 +321,20 @@ test('renders safe Markdown and copies code and complete messages without changi
   const codeAssistant = assistantMessages(page).last();
   await codeAssistant.getByRole('button', { name: 'Copy code', exact: true }).click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe("console.log('Hello from NexRun');\n");
+  await expect(page.getByRole('region', { name: 'Notifications', exact: true }).getByText('Code copied', { exact: true })).toBeVisible();
   await codeAssistant.getByRole('button', { name: 'Copy message', exact: true }).click();
   const original = codeSnapshot.messages.filter(message => message.role === 'assistant').at(-1)!.content;
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(original);
+
+  await chooseLanguage(page, 'zh-CN');
+  await codeAssistant.getByRole('button', { name: '复制消息', exact: true }).click();
+  const notifications = page.getByRole('region', { name: '通知', exact: true });
+  const copied = notifications.locator('[data-slot="toast"]').filter({ has: page.getByText('消息已复制', { exact: true }) });
+  await expect(copied).toBeVisible();
+  await page.keyboard.press('F6');
+  await expect(notifications).toBeFocused();
+  await copied.getByRole('button', { name: '关闭通知', exact: true }).click();
+  await expect(copied).toHaveCount(0);
 });
 
 test('answer language follows the current prompt independently of the selected UI language', async ({ page }) => {
@@ -327,7 +349,7 @@ test('answer language follows the current prompt independently of the selected U
   expect(chineseReply).not.toContain(chinesePrompt);
   await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeVisible();
 
-  await page.getByRole('combobox', { name: 'Language' }).selectOption('zh-CN');
+  await chooseLanguage(page, 'zh-CN');
   await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN');
   const englishPrompt = `请用英文简要回答，给出一个建议，不要重复这段请求。${unique('private English request')}`;
   await send(page, englishPrompt, 'zh-CN');
@@ -402,4 +424,119 @@ test('rejects empty and whitespace messages without creating a Run or changing h
   expect(unchanged.cursor).toBe(0);
   await page.reload();
   await expect(page.locator('.message')).toHaveCount(0);
+});
+
+test('uses the language listbox with keyboard cancel, selection and persisted locale', async ({ page }) => {
+  await page.goto('/');
+  const trigger = page.getByRole('combobox', { name: 'Language', exact: true });
+  await expect(trigger).toHaveAttribute('data-slot', 'select-trigger');
+  await expect(page.locator('.sidebar-footer select:visible, dialog')).toHaveCount(0);
+  await trigger.focus();
+  await trigger.press('ArrowDown');
+  const listbox = page.getByRole('listbox');
+  const englishOption = listbox.getByRole('option', { name: 'English', exact: true });
+  const chineseOption = listbox.getByRole('option', { name: '简体中文', exact: true });
+  await expect(listbox).toBeVisible();
+  await expect(listbox.getByRole('option')).toHaveText(['English', '简体中文']);
+  await expect(englishOption).toBeFocused();
+  await page.keyboard.press('Home');
+  await expect(englishOption).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(chineseOption).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(listbox).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await expect(trigger).toContainText('English');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+
+  await trigger.press('ArrowDown');
+  await expect(listbox).toBeVisible();
+  await expect(englishOption).toBeFocused();
+  await page.keyboard.press('Home');
+  await expect(englishOption).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await expect(chineseOption).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(listbox).toHaveCount(0);
+  await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN');
+  await expect(page.getByRole('combobox', { name: '语言', exact: true })).toContainText('简体中文');
+
+  await page.reload();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'zh-CN');
+  const localizedTrigger = page.getByRole('combobox', { name: '语言', exact: true });
+  await localizedTrigger.focus();
+  await localizedTrigger.press('ArrowUp');
+  await expect(listbox).toBeVisible();
+  await expect(chineseOption).toBeFocused();
+  await page.keyboard.press('Home');
+  await expect(englishOption).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  await page.reload();
+  await expect(page.getByRole('combobox', { name: 'Language', exact: true })).toContainText('English');
+});
+
+test('traps rename-dialog focus and restores its trigger after Escape and localized cancellation', async ({ page }) => {
+  const conversation = await createConversation(page, unique('dialog keyboard'));
+  await openConversation(page, conversation.id);
+  const trigger = page.locator('.conversation-row.selected').getByRole('button', { name: `Rename chat: ${conversation.title}`, exact: true });
+  await trigger.click();
+  const dialog = page.getByRole('dialog', { name: 'Give this chat a name', exact: true });
+  await expect(dialog).toHaveAttribute('data-slot', 'dialog-content');
+  await expect(page.locator('dialog')).toHaveCount(0);
+  const input = dialog.getByRole('textbox', { name: 'Conversation name', exact: true });
+  await expect(input).toBeFocused();
+  await input.fill('An unsaved rename');
+  for (const key of ['Tab', 'Tab', 'Tab', 'Tab', 'Tab', 'Tab', 'Shift+Tab', 'Shift+Tab', 'Shift+Tab', 'Shift+Tab', 'Shift+Tab', 'Shift+Tab']) {
+    await page.keyboard.press(key);
+    await expect.poll(() => dialog.evaluate(element => element.contains(document.activeElement))).toBeTruthy();
+  }
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(conversation.title);
+
+  await chooseLanguage(page, 'zh-CN');
+  const localizedTrigger = page.locator('.conversation-row.selected').getByRole('button', { name: `重命名聊天: ${conversation.title}`, exact: true });
+  await localizedTrigger.click();
+  const localizedDialog = page.getByRole('dialog', { name: '为这段对话命名', exact: true });
+  await expect(localizedDialog.getByRole('textbox', { name: '对话名称', exact: true })).toBeFocused();
+  await localizedDialog.getByRole('button', { name: '取消', exact: true }).click();
+  await expect(localizedDialog).toHaveCount(0);
+  await expect(localizedTrigger).toBeFocused();
+  const listed = await page.request.get('/api/conversations');
+  const saved = (await listed.json()).conversations.find((chat: Conversation) => chat.id === conversation.id) as Conversation;
+  expect(saved.title).toBe(conversation.title);
+});
+
+test('cancels an archive alert without changes and confirms it with localized controls', async ({ page }) => {
+  const conversation = await createConversation(page, unique('archive alert'));
+  await openConversation(page, conversation.id);
+  await send(page, 'Hello');
+  const before = await waitForTerminal(page, conversation.id);
+  const trigger = page.locator('.conversation-row.selected').getByRole('button', { name: `Archive chat: ${conversation.title}`, exact: true });
+  await trigger.click();
+  const dialog = page.getByRole('alertdialog', { name: 'Archive this conversation?', exact: true });
+  await expect(dialog).toHaveAttribute('data-slot', 'alert-dialog-content');
+  const cancel = dialog.getByRole('button', { name: 'Cancel', exact: true });
+  await expect(cancel).toBeFocused();
+  for (const key of ['Tab', 'Tab', 'Tab', 'Shift+Tab', 'Shift+Tab', 'Shift+Tab']) {
+    await page.keyboard.press(key);
+    await expect.poll(() => dialog.evaluate(element => element.contains(document.activeElement))).toBeTruthy();
+  }
+  await cancel.click();
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await expect(page).toHaveURL(`/chat/${conversation.id}`);
+  await expect(page.locator(`a.conversation-link[href="/chat/${conversation.id}"]`)).toBeVisible();
+  expect((await snapshot(page, conversation.id)).messages).toEqual(before.messages);
+
+  await chooseLanguage(page, 'zh-CN');
+  await page.locator('.conversation-row.selected').getByRole('button', { name: `归档聊天: ${conversation.title}`, exact: true }).click();
+  const localizedDialog = page.getByRole('alertdialog', { name: '归档这段对话？', exact: true });
+  await expect(localizedDialog.getByRole('button', { name: '取消', exact: true })).toBeFocused();
+  await localizedDialog.getByRole('button', { name: '归档聊天', exact: true }).click();
+  await expect(page).toHaveURL('/');
+  await expect(page.locator(`a.conversation-link[href="/chat/${conversation.id}"]`)).toHaveCount(0);
+  expect((await snapshot(page, conversation.id)).messages).toEqual(before.messages);
 });

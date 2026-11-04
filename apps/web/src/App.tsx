@@ -1,16 +1,30 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { ChatEvent, Conversation, Message, Run, RuntimeConfig } from '@nexrun/protocol';
-import { ArrowDown, ArrowLeft, ArrowUp, Archive, Check, ChevronDown, ChevronRight, CircleAlert, Copy, Globe2, Lightbulb, LoaderCircle, MessageSquare, Pencil, PenLine, Plus, RefreshCw, Sparkles, Square, X } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowUp, Archive, ChevronDown, ChevronRight, CircleAlert, Copy, Globe2, Lightbulb, MessageSquare, Pencil, PenLine, Plus, RefreshCw, Sparkles, Square, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
+import { Kbd } from '@/components/ui/kbd';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
+import { Sidebar, SidebarContent, SidebarFooter, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuAction, SidebarMenuButton, SidebarMenuItem, SidebarProvider } from '@/components/ui/sidebar';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Spinner } from '@/components/ui/spinner';
+import { Toaster, toast as toastManager } from '@/components/ui/toast';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { ConversationDialog, type ConversationAction } from './components/ConversationDialog';
 import { MarkdownMessage } from './components/MarkdownMessage';
 import { api, RequestError } from './lib/api';
 import { errorKey, translate, type Locale, type TranslationKey } from './lib/i18n';
 
 type Connection = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'resyncing';
 type PendingSend = { content: string; key: string; state: 'sending' | 'uncertain' };
-type DialogAction = { type: 'rename' | 'archive'; conversation: Conversation };
+type DialogAction = ConversationAction;
 const activeStatuses = new Set(['queued', 'running', 'cancelling']);
 const terminalStatuses = new Set(['completed', 'failed', 'cancelled', 'interrupted']);
 const isActive = (run: Run | null | undefined) => Boolean(run && activeStatuses.has(run.status));
@@ -43,34 +57,6 @@ function BrandMark({ small = false }: { small?: boolean }) {
   return <span className={`brand-mark${small ? ' brand-mark-small' : ''}`} aria-hidden="true"><span /><span /><span /></span>;
 }
 
-function ConversationDialog({ action, onDismiss, onSaved, t }: { action: DialogAction; onDismiss: () => void; onSaved: (conversation: Conversation) => void; t: (key: TranslationKey) => string }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  const [title, setTitle] = useState(action.conversation.title);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => { const dialog = ref.current; dialog?.showModal(); return () => dialog?.close(); }, []);
-  const archive = action.type === 'archive';
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (busy || (!archive && !title.trim())) return;
-    setBusy(true); setError(null);
-    try {
-      const updated = await api.updateConversation(action.conversation.id, archive ? { archived: true } : { title: title.trim() });
-      onSaved(updated); onDismiss();
-    } catch (failure) { setError(failureCode(failure)); setBusy(false); }
-  }
-  return <dialog ref={ref} className="conversation-dialog" onCancel={onDismiss} onClick={event => { if (event.target === ref.current && !busy) onDismiss(); }} aria-labelledby="dialog-title" aria-describedby="dialog-description">
-    <form onSubmit={submit}>
-      <Button className="dialog-close" type="button" size="icon" variant="ghost" onClick={onDismiss} aria-label={t('close')}><X size={18} /></Button>
-      <div className={`dialog-icon${archive ? ' archive-icon' : ''}`}>{archive ? <Archive size={21} /> : <Pencil size={21} />}</div>
-      <h2 id="dialog-title">{t(archive ? 'archiveTitle' : 'renameTitle')}</h2>
-      <p id="dialog-description">{t(archive ? 'archiveDescription' : 'renameDescription')}</p>
-      {!archive && <label className="dialog-label">{t('titleLabel')}<Input autoFocus value={title} onChange={event => setTitle(event.target.value)} maxLength={120} required /></label>}
-      {error && <div className="inline-error" role="alert"><CircleAlert size={16} />{t(errorKey(error))}</div>}
-      <div className="dialog-actions"><Button type="button" variant="outline" onClick={onDismiss} disabled={busy}>{t('cancel')}</Button><Button type="submit" disabled={busy || (!archive && !title.trim())}>{busy && <LoaderCircle size={15} className="spin" />}{t(busy ? 'working' : archive ? 'archive' : 'save')}</Button></div>
-    </form>
-  </dialog>;
-}
 
 export default function App() {
   const [locale, setLocale] = useState<Locale>(initialLocale);
@@ -103,7 +89,6 @@ export default function App() {
   const [conversationErrors, setConversationErrors] = useState<Record<string, string | undefined>>({});
   const [cancelPending, setCancelPending] = useState(false);
   const [dialog, setDialog] = useState<DialogAction | null>(null);
-  const [toast, setToast] = useState<TranslationKey | null>(null);
   const [hasNewOutput, setHasNewOutput] = useState(false);
   const [announcement, setAnnouncement] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -129,7 +114,6 @@ export default function App() {
     window.addEventListener('online', online);
     return () => { window.removeEventListener('offline', offline); window.removeEventListener('online', online); };
   }, []);
-  useEffect(() => { if (!toast) return; const timer = window.setTimeout(() => setToast(null), 2600); return () => window.clearTimeout(timer); }, [toast]);
   const navigate = useCallback((id: string | null) => {
     const path = id ? `/chat/${encodeURIComponent(id)}` : '/';
     if (window.location.pathname !== path) window.history.pushState({}, '', path);
@@ -335,8 +319,8 @@ export default function App() {
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && !composingRef.current && event.keyCode !== 229) { event.preventDefault(); void sendMessage(); }
   }
   async function copy(text: string, kind: 'code' | 'message') {
-    try { await navigator.clipboard.writeText(text); setToast(kind === 'code' ? 'copiedCode' : 'copiedMessage'); return true; }
-    catch { setToast('copyFailed'); return false; }
+    try { await navigator.clipboard.writeText(text); toastManager.add({ title: t(kind === 'code' ? 'copiedCode' : 'copiedMessage'), type: 'success' }); return true; }
+    catch { toastManager.add({ title: t('copyFailed'), type: 'error' }); return false; }
   }
   function scrollToBottom() { const element = scrollRef.current; if (element) element.scrollTo({ top: element.scrollHeight, behavior: 'smooth' }); nearBottomRef.current = true; setHasNewOutput(false); }
   const suggestions = [
@@ -344,61 +328,79 @@ export default function App() {
     { icon: Sparkles, title: 'suggestionExplain', description: 'suggestionExplainDetail', prompt: 'suggestionExplainPrompt' },
     { icon: PenLine, title: 'suggestionWrite', description: 'suggestionWriteDetail', prompt: 'suggestionWritePrompt' },
   ] as const;
-  const suggestionCards = <div className="suggestion-grid">{suggestions.map(suggestion => <button type="button" className="suggestion-card" key={suggestion.title} disabled={creating} onClick={() => selectedId ? (updateDraft(t(suggestion.prompt)), composerRef.current?.focus()) : void createChat(t(suggestion.prompt))}><suggestion.icon size={19} strokeWidth={1.6} /><span>{t(suggestion.title)}</span><p>{t(suggestion.description)}</p><ChevronRight className="suggestion-arrow" size={16} /></button>)}</div>;
+  const suggestionCards = <div className="suggestion-grid">{suggestions.map(suggestion => <Card className="suggestion-card" key={suggestion.title}>
+    <Button type="button" variant="ghost" className="suggestion-card-button" disabled={creating} onClick={() => selectedId ? (updateDraft(t(suggestion.prompt)), composerRef.current?.focus()) : void createChat(t(suggestion.prompt))}>
+      <suggestion.icon size={19} strokeWidth={1.6} /><span>{t(suggestion.title)}</span><p>{t(suggestion.description)}</p><ChevronRight className="suggestion-arrow" size={16} />
+    </Button>
+  </Card>)}</div>;
 
-  return <div className={`app-shell${selectedId ? ' detail-open' : ''}`}>
+  return <Toaster closeLabel={t('dismiss')} viewportLabel={t('notifications')}><TooltipProvider><SidebarProvider className={`app-shell${selectedId ? ' detail-open' : ''}`}>
     <a className="skip-link" href="#conversation-main">{t('skipToChat')}</a>
-    <aside className="sidebar" aria-label={t('sidebarLabel')}>
-      <a href="/" className="brand" onClick={event => { event.preventDefault(); navigate(null); }}><BrandMark /><span>NexRun<span className="brand-subtitle">{t('workspace')}</span></span></a>
-      <Button className="new-chat-button" onClick={() => void createChat()} disabled={creating}>{creating ? <LoaderCircle className="spin" size={17} /> : <Plus size={18} />}<span>{t('newChat')}</span><span className="new-chat-corner"><PenLine size={15} /></span></Button>
-      <div className="sidebar-section-heading"><span>{t('yourChats')}</span><span>{conversations.length || '—'}</span></div>
-      <nav className="conversation-list" aria-label={t('sidebarLabel')}>
-        {listLoading ? <div className="list-skeleton" role="status" aria-label={t('loadingChats')}>{[1, 2, 3].map(value => <div key={value}><span /><span /></div>)}</div> : conversations.length === 0 && !listError ? <div className="sidebar-empty"><MessageSquare size={23} strokeWidth={1.4} /><strong>{t('noChats')}</strong><p>{t('noChatsHint')}</p></div> : conversations.map(conversation => <div className={`conversation-row${conversation.id === selectedId ? ' selected' : ''}`} key={conversation.id}>
-          <a href={`/chat/${encodeURIComponent(conversation.id)}`} className="conversation-link" aria-current={conversation.id === selectedId ? 'page' : undefined} onClick={event => { if (event.ctrlKey || event.metaKey || event.shiftKey) return; event.preventDefault(); navigate(conversation.id); }}>
-            <MessageSquare size={16} className="conversation-icon" strokeWidth={1.7} /><span className="conversation-text"><span className="conversation-title">{conversation.title || t('untitled')}</span><span className="conversation-preview">{conversation.preview || t('newConversation')}</span></span>{isActive(conversation.activeRun) && <span className="activity-dot" aria-label={t('generating')} />}
-          </a>
-          <div className="conversation-actions"><Button size="icon" variant="ghost" aria-label={`${t('rename')}: ${conversation.title}`} title={t('rename')} onClick={() => setDialog({ type: 'rename', conversation })}><Pencil size={13} /></Button><Button size="icon" variant="ghost" aria-label={`${t('archive')}: ${conversation.title}`} title={isActive(conversation.activeRun) ? t('archiveBusy') : t('archive')} disabled={isActive(conversation.activeRun)} onClick={() => setDialog({ type: 'archive', conversation })}><Archive size={13} /></Button></div>
-        </div>)}
-        {nextListCursor && <button className="more-chats" type="button" onClick={() => void loadMoreChats()} disabled={moreListLoading}>{moreListLoading ? <LoaderCircle className="spin" size={14} /> : <ChevronDown size={14} />}{t('loadMoreChats')}</button>}
-      </nav>
-      {listError && <div className="sidebar-error" role="alert"><CircleAlert size={15} /><span>{t(errorKey(listError))}</span><button onClick={() => void refreshList()} aria-label={t('retry')}><RefreshCw size={14} /></button></div>}
-      <div className="sidebar-footer"><div className="workspace-label"><span className="workspace-avatar">N</span><span><strong>{t('privatePreview')}</strong><span><i />{t(config?.adapter === 'pi' ? 'agentPi' : config?.adapter === 'mock' ? 'mockMode' : 'connecting')}</span></span></div><label className="language-picker"><Globe2 size={15} /><span className="sr-only">{t('language')}</span><select aria-label={t('language')} value={locale} onChange={event => setLocale(event.target.value as Locale)}><option value="en">English</option><option value="zh-CN">简体中文</option></select><ChevronDown size={13} /></label></div>
-    </aside>
+    <Sidebar collapsible="none" className="sidebar" role="complementary" aria-label={t('sidebarLabel')}>
+      <SidebarHeader className="chat-sidebar-header">
+        <a href="/" className="brand" onClick={event => { event.preventDefault(); navigate(null); }}><BrandMark /><span>NexRun<span className="brand-subtitle">{t('workspace')}</span></span></a>
+        <Button data-new-chat className="new-chat-button" onClick={() => void createChat()} disabled={creating}>{creating ? <Spinner className="spin" aria-label={t('loading')} /> : <Plus size={18} />}<span>{t('newChat')}</span><span className="new-chat-corner"><PenLine size={15} /></span></Button>
+      </SidebarHeader>
+      <SidebarGroupLabel className="sidebar-section-heading"><span>{t('yourChats')}</span><Badge variant="outline">{conversations.length || '—'}</Badge></SidebarGroupLabel>
+      <SidebarContent className="chat-sidebar-content">
+        <ScrollArea className="conversation-list" viewportProps={{ className: 'conversation-list-viewport' }}>
+          <nav aria-label={t('sidebarLabel')}>
+            {listLoading ? <div className="list-skeleton" role="status" aria-label={t('loadingChats')}>{[1, 2, 3].map(value => <div key={value}><Skeleton /><Skeleton /></div>)}</div> : conversations.length === 0 && !listError ? <Empty className="sidebar-empty"><EmptyHeader><EmptyMedia variant="icon"><MessageSquare size={23} strokeWidth={1.4} /></EmptyMedia><EmptyTitle>{t('noChats')}</EmptyTitle><EmptyDescription>{t('noChatsHint')}</EmptyDescription></EmptyHeader></Empty> : <SidebarMenu>
+              {conversations.map(conversation => <SidebarMenuItem className={`conversation-row${conversation.id === selectedId ? ' selected' : ''}`} key={conversation.id}>
+                <SidebarMenuButton render={<a href={`/chat/${encodeURIComponent(conversation.id)}`} />} className="conversation-link" isActive={conversation.id === selectedId} aria-current={conversation.id === selectedId ? 'page' : undefined} onClick={event => { if (event.ctrlKey || event.metaKey || event.shiftKey) return; event.preventDefault(); navigate(conversation.id); }}>
+                  <MessageSquare size={16} className="conversation-icon" strokeWidth={1.7} /><span className="conversation-text"><span className="conversation-title">{conversation.title || t('untitled')}</span><span className="conversation-preview">{conversation.preview || t('newConversation')}</span></span>{isActive(conversation.activeRun) && <span className="activity-dot" aria-label={t('generating')} />}
+                </SidebarMenuButton>
+                <div className="conversation-actions">
+                  <Tooltip><TooltipTrigger render={<SidebarMenuAction className="conversation-menu-action static after:hidden" render={<Button size="icon" variant="ghost" />} aria-label={`${t('rename')}: ${conversation.title}`} onClick={event => setDialog({ type: 'rename', conversation, trigger: event.currentTarget })} />}><Pencil size={13} /></TooltipTrigger><TooltipContent>{t('rename')}</TooltipContent></Tooltip>
+                  <Tooltip><TooltipTrigger render={<SidebarMenuAction className="conversation-menu-action static after:hidden" render={<Button size="icon" variant="ghost" />} aria-label={`${t('archive')}: ${conversation.title}`} disabled={isActive(conversation.activeRun)} onClick={event => setDialog({ type: 'archive', conversation, trigger: event.currentTarget })} />}><Archive size={13} /></TooltipTrigger><TooltipContent>{t(isActive(conversation.activeRun) ? 'archiveBusy' : 'archive')}</TooltipContent></Tooltip>
+                </div>
+              </SidebarMenuItem>)}
+            </SidebarMenu>}
+            {nextListCursor && <Button variant="ghost" className="more-chats" type="button" onClick={() => void loadMoreChats()} disabled={moreListLoading}>{moreListLoading ? <Spinner className="spin" aria-label={t('loading')} /> : <ChevronDown size={14} />}{t('loadMoreChats')}</Button>}
+          </nav>
+        </ScrollArea>
+      </SidebarContent>
+      {listError && <Alert className="sidebar-error" variant="destructive"><CircleAlert size={15} /><AlertDescription>{t(errorKey(listError))}</AlertDescription><Button variant="ghost" size="icon" onClick={() => void refreshList()} aria-label={t('retry')}><RefreshCw size={14} /></Button></Alert>}
+      <Separator className="sidebar-separator" />
+      <SidebarFooter className="sidebar-footer">
+        <div className="workspace-label"><Avatar className="workspace-avatar"><AvatarFallback>N</AvatarFallback></Avatar><span><strong>{t('privatePreview')}</strong><span><i />{t(config?.adapter === 'pi' ? 'agentPi' : config?.adapter === 'mock' ? 'mockMode' : 'connecting')}</span></span></div>
+        <div className="language-picker"><Globe2 size={15} /><Select items={[{ value: 'en', label: t('english') }, { value: 'zh-CN', label: t('chinese') }]} value={locale} onValueChange={value => { if (value === 'en' || value === 'zh-CN') setLocale(value); }}><SelectTrigger className="language-trigger" aria-label={t('language')}><SelectValue /></SelectTrigger><SelectContent className="language-menu" side="top" align="start" alignItemWithTrigger={false}><SelectItem value="en">{t('english')}</SelectItem><SelectItem value="zh-CN">{t('chinese')}</SelectItem></SelectContent></Select></div>
+      </SidebarFooter>
+    </Sidebar>
 
     <main className="chat-main" id="conversation-main" tabIndex={-1}>
-      <header className="chat-header"><div className="chat-heading"><Button className="mobile-back" variant="ghost" size="icon" onClick={() => navigate(null)} aria-label={t('home')}><ArrowLeft size={19} /></Button><div className="header-icon"><MessageSquare size={18} strokeWidth={1.6} /></div><div><h1>{selectedId ? currentConversation?.title || t('conversation') : t('newConversation')}</h1><p>{t('directChat')}<span>·</span>{t('textOnly')}</p></div></div><div className="header-status"><span className="agent-pill"><span className="agent-pill-icon">π</span>{agentName}</span>{selectedId && <span className={`connection-pill ${connection}`} role="status"><i />{t(connection === 'idle' ? 'connecting' : connection)}</span>}</div></header>
+      <header className="chat-header"><div className="chat-heading"><Button className="mobile-back" variant="ghost" size="icon" onClick={() => navigate(null)} aria-label={t('home')}><ArrowLeft size={19} /></Button><div className="header-icon"><MessageSquare size={18} strokeWidth={1.6} /></div><div><h1>{selectedId ? currentConversation?.title || t('conversation') : t('newConversation')}</h1><p>{t('directChat')}<span>·</span>{t('textOnly')}</p></div></div><div className="header-status"><Badge variant="secondary" className="agent-pill"><Avatar className="agent-pill-icon"><AvatarFallback>π</AvatarFallback></Avatar>{agentName}</Badge>{selectedId && <Badge variant="outline" className={`connection-pill ${connection}`} role="status"><i />{t(connection === 'idle' ? 'connecting' : connection)}</Badge>}</div></header>
 
-      {!selectedId ? <div className="home-screen"><div className="welcome-content"><div className="welcome-eyebrow"><span />NEXRUN<span /></div><div className="welcome-symbol"><BrandMark /></div><h2>{t('hello')}</h2><p className="welcome-description">{t('welcomeHint')}</p><Button className="welcome-start" onClick={() => void createChat()} disabled={creating}>{creating ? <LoaderCircle className="spin" size={17} /> : <Plus size={17} />}{t('startChat')}<ArrowUp className="diagonal-arrow" size={17} /></Button>{suggestionCards}<div className="welcome-footnote"><span className="tiny-status-dot" />{config?.adapter === 'mock' ? t('mockDescription') : config?.adapter === 'pi' ? t('piDescription') : t('loading')}</div></div><div className="home-bottom-note">{t('autoSaved')}</div></div> : <>
-        <div className="timeline" ref={scrollRef} role="region" aria-label={t('timelineLabel')} onScroll={event => { const element = event.currentTarget; nearBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 100; if (nearBottomRef.current) setHasNewOutput(false); }}>
+      {!selectedId ? <Empty className="home-screen"><div className="welcome-content"><div className="welcome-eyebrow"><Separator />NEXRUN<Separator /></div><div className="welcome-symbol"><BrandMark /></div><h2>{t('hello')}</h2><p className="welcome-description">{t('welcomeHint')}</p><Button className="welcome-start" onClick={() => void createChat()} disabled={creating}>{creating ? <Spinner className="spin" aria-label={t('loading')} /> : <Plus size={17} />}{t('startChat')}<ArrowUp className="diagonal-arrow" size={17} /></Button>{suggestionCards}<div className="welcome-footnote"><span className="tiny-status-dot" />{config?.adapter === 'mock' ? t('mockDescription') : config?.adapter === 'pi' ? t('piDescription') : t('loading')}</div></div><div className="home-bottom-note">{t('autoSaved')}</div></Empty> : <>
+        <ScrollArea className="timeline" viewportRef={scrollRef} viewportProps={{ className: 'timeline-viewport', role: 'region', 'aria-label': t('timelineLabel'), onScroll: event => { const element = event.currentTarget; nearBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 100; if (nearBottomRef.current) setHasNewOutput(false); } }}>
           <div className="timeline-inner">
-            {snapshotLoading ? <div className="message-skeleton" role="status" aria-label={t('loadingMessages')}><div /><div /><div /><span /><div /><div /></div> : snapshotError && messages.length === 0 ? <div className="chat-load-error" role="alert"><CircleAlert size={30} strokeWidth={1.4} /><p>{t(errorKey(snapshotError))}</p><Button variant="outline" onClick={() => setRefreshVersion(value => value + 1)}><RefreshCw size={15} />{t('retry')}</Button></div> : messages.length === 0 ? <div className="empty-chat"><div className="empty-chat-icon"><Sparkles size={27} strokeWidth={1.3} /></div><h2>{t('freshTitle')}</h2><p>{t('freshHint')}</p>{suggestionCards}</div> : <>
-              {before !== null && <div className="earlier-messages"><Button size="sm" variant="ghost" onClick={() => void loadEarlier()} disabled={olderLoading}>{olderLoading ? <LoaderCircle size={14} className="spin" /> : <ArrowUp size={14} />}{t(olderLoading ? 'loading' : 'loadEarlier')}</Button></div>}
-              <div className="timeline-date"><span />{new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric' }).format(new Date(messages[0]!.createdAt))}<span /></div>
+            {snapshotLoading ? <div className="message-skeleton" role="status" aria-label={t('loadingMessages')}><Skeleton /><Skeleton /><Skeleton /><Separator /><Skeleton /><Skeleton /></div> : snapshotError && messages.length === 0 ? <Alert className="chat-load-error"><CircleAlert size={30} strokeWidth={1.4} /><AlertDescription>{t(errorKey(snapshotError))}</AlertDescription><Button variant="outline" onClick={() => setRefreshVersion(value => value + 1)}><RefreshCw size={15} />{t('retry')}</Button></Alert> : messages.length === 0 ? <Empty className="empty-chat"><EmptyHeader><EmptyMedia variant="icon" className="empty-chat-icon"><Sparkles size={27} strokeWidth={1.3} /></EmptyMedia><EmptyTitle>{t('freshTitle')}</EmptyTitle><EmptyDescription>{t('freshHint')}</EmptyDescription></EmptyHeader>{suggestionCards}</Empty> : <>
+              {before !== null && <div className="earlier-messages"><Button size="sm" variant="ghost" onClick={() => void loadEarlier()} disabled={olderLoading}>{olderLoading ? <Spinner className="spin" aria-label={t('loading')} /> : <ArrowUp size={14} />}{t(olderLoading ? 'loading' : 'loadEarlier')}</Button></div>}
+              <div className="timeline-date"><Separator />{new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric' }).format(new Date(messages[0]!.createdAt))}<Separator /></div>
               {messages.map(message => <article key={message.id} className={`message message-${message.role}`} data-message-id={message.id}>
-                {message.role === 'assistant' && <div className="message-attribution"><span className="assistant-avatar">π</span><span>{agentName}</span>{message.status === 'streaming' || message.status === 'pending' ? <span className="message-generating"><i />{t(message.status === 'pending' ? 'queued' : 'generating')}</span> : <span className="message-time">{new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(new Date(message.createdAt))}</span>}</div>}
-                <div className="message-body">{message.content ? message.role === 'user' ? <p className="user-content">{message.content}</p> : <MarkdownMessage content={message.content} t={t} onCopy={copy} /> : message.status === 'pending' || message.status === 'streaming' ? <div className="typing-indicator" role="status" aria-label={t('emptyResponse')}><span /><span /><span /></div> : <p className="empty-response">{t('noResponse')}</p>}</div>
-                {message.role === 'assistant' && ['failed', 'cancelled', 'interrupted'].includes(message.status) && <div className={`message-outcome ${message.status}`}><span className="outcome-tag">{message.status === 'cancelled' ? <Square size={10} /> : <CircleAlert size={12} />}{t(message.status === 'failed' ? 'failed' : message.status === 'interrupted' ? 'interrupted' : 'cancelled')}</span><span>{t(message.status === 'failed' ? 'failedMessage' : message.status === 'interrupted' ? 'interruptedMessage' : 'cancelledMessage')}</span></div>}
-                {message.content && <div className="message-toolbar"><Button variant="ghost" size="icon" title={t('copyMessage')} aria-label={t('copyMessage')} onClick={() => void copy(message.content, 'message')}><Copy size={14} /></Button>{message.role === 'user' && <span>{t('you')}</span>}</div>}
+                {message.role === 'assistant' && <div className="message-attribution"><Avatar className="assistant-avatar"><AvatarFallback>π</AvatarFallback></Avatar><span>{agentName}</span>{message.status === 'streaming' || message.status === 'pending' ? <Badge variant="outline" className="message-generating"><i />{t(message.status === 'pending' ? 'queued' : 'generating')}</Badge> : <span className="message-time">{new Intl.DateTimeFormat(locale, { hour: '2-digit', minute: '2-digit' }).format(new Date(message.createdAt))}</span>}</div>}
+                <div className="message-body">{message.content ? message.role === 'user' ? <p className="user-content">{message.content}</p> : <MarkdownMessage content={message.content} t={t} onCopy={copy} /> : message.status === 'pending' || message.status === 'streaming' ? <div className="typing-indicator" role="status" aria-label={t('emptyResponse')}><Spinner aria-hidden="true" /></div> : <p className="empty-response">{t('noResponse')}</p>}</div>
+                {message.role === 'assistant' && ['failed', 'cancelled', 'interrupted'].includes(message.status) && <Alert className={`message-outcome ${message.status}`} role="status"><Badge variant="outline" className="outcome-tag">{message.status === 'cancelled' ? <Square size={10} /> : <CircleAlert size={12} />}{t(message.status === 'failed' ? 'failed' : message.status === 'interrupted' ? 'interrupted' : 'cancelled')}</Badge><AlertDescription>{t(message.status === 'failed' ? 'failedMessage' : message.status === 'interrupted' ? 'interruptedMessage' : 'cancelledMessage')}</AlertDescription></Alert>}
+                {message.content && <div className="message-toolbar"><Tooltip><TooltipTrigger render={<Button variant="ghost" size="icon" aria-label={t('copyMessage')} onClick={() => void copy(message.content, 'message')} />}><Copy size={14} /></TooltipTrigger><TooltipContent>{t('copyMessage')}</TooltipContent></Tooltip>{message.role === 'user' && <span>{t('you')}</span>}</div>}
               </article>)}
             </>}
           </div>
-        </div>
+        </ScrollArea>
         {hasNewOutput && <Button className="new-output" size="sm" variant="outline" onClick={scrollToBottom}><ArrowDown size={14} />{t('newOutput')}</Button>}
         <div className="composer-region"><div className="composer-inner">
-          {(!config?.configured && config?.adapter === 'pi') && <div className="config-notice" role="alert"><CircleAlert size={16} /><span>{t('errorNotConfigured')}</span></div>}
-          {connection !== 'connected' && connection !== 'connecting' && <div className="connection-notice" role="status"><RefreshCw size={14} className={connection === 'disconnected' ? '' : 'spin'} /><span>{t('connectionHint')}</span><button type="button" onClick={() => setRefreshVersion(value => value + 1)}>{t('reconnect')}</button></div>}
-          {currentError && <div className="composer-error" role="alert"><CircleAlert size={16} /><span>{t(errorKey(currentError))}</span><button aria-label={t('dismiss')} onClick={() => setConversationErrors(previous => ({ ...previous, [selectedId]: undefined }))}><X size={14} /></button></div>}
-          {currentPending?.state === 'uncertain' && <div className="composer-error" role="alert"><CircleAlert size={16} /><span>{t('retrySendHint')}</span><button type="button" disabled={!networkOnline} onClick={() => void sendMessage(currentPending)}>{t('retrySend')}</button></div>}
+          {(!config?.configured && config?.adapter === 'pi') && <Alert className="config-notice"><CircleAlert size={16} /><AlertDescription>{t('errorNotConfigured')}</AlertDescription></Alert>}
+          {connection !== 'connected' && connection !== 'connecting' && <Alert className="connection-notice" role="status"><RefreshCw size={14} className={connection === 'disconnected' ? '' : 'spin'} /><AlertDescription>{t('connectionHint')}</AlertDescription><Button variant="link" type="button" onClick={() => setRefreshVersion(value => value + 1)}>{t('reconnect')}</Button></Alert>}
+          {currentError && <Alert className="composer-error" variant="destructive"><CircleAlert size={16} /><AlertDescription>{t(errorKey(currentError))}</AlertDescription><Button variant="ghost" size="icon" aria-label={t('dismiss')} onClick={() => setConversationErrors(previous => ({ ...previous, [selectedId]: undefined }))}><X size={14} /></Button></Alert>}
+          {currentPending?.state === 'uncertain' && <Alert className="composer-error" variant="destructive"><CircleAlert size={16} /><AlertDescription>{t('retrySendHint')}</AlertDescription><Button variant="link" type="button" disabled={!networkOnline} onClick={() => void sendMessage(currentPending)}>{t('retrySend')}</Button></Alert>}
           <form className={`composer${active ? ' composer-active' : ''}`} onSubmit={event => { event.preventDefault(); void sendMessage(); }}>
             <Textarea ref={composerRef} aria-label={t('compose')} placeholder={t(config?.adapter === 'pi' && !config.configured ? 'composeUnavailable' : 'composePlaceholder')} value={draft} rows={2} maxLength={16000} onChange={event => updateDraft(event.target.value)} onKeyDown={handleComposerKey} onCompositionStart={() => { composingRef.current = true; }} onCompositionEnd={() => { composingRef.current = false; }} disabled={snapshotLoading || Boolean(snapshotError && messages.length === 0) || currentPending?.state === 'sending' || (config?.adapter === 'pi' && !config.configured)} />
-            <div className="composer-bottom"><span className="composer-agent"><span>π</span>{agentName}{active && <span className="composer-run-status"><i />{t(run?.status === 'cancelling' || cancelPending ? 'cancelling' : run?.status === 'queued' ? 'queued' : 'generating')}</span>}{currentPending?.state === 'sending' && <span className="composer-run-status"><LoaderCircle size={12} className="spin" />{t('sending')}</span>}</span>{active ? <Button type="button" className="stop-button" size="sm" variant="outline" onClick={() => void cancelRun()} disabled={cancelPending || run?.status === 'cancelling'} aria-label={t('stop')}>{cancelPending || run?.status === 'cancelling' ? <LoaderCircle size={13} className="spin" /> : <Square size={12} fill="currentColor" />}{t(cancelPending || run?.status === 'cancelling' ? 'stopping' : 'stop')}</Button> : <Button type="submit" className="send-button" size="icon" aria-label={t('send')} disabled={!networkOnline || !draft.trim() || Boolean(currentPending) || snapshotLoading || Boolean(snapshotError && messages.length === 0) || (config?.adapter === 'pi' && !config.configured)}>{currentPending?.state === 'sending' ? <LoaderCircle className="spin" size={18} /> : <ArrowUp size={19} />}</Button>}</div>
+            <div className="composer-bottom"><span className="composer-agent"><Avatar className="composer-avatar"><AvatarFallback>π</AvatarFallback></Avatar>{agentName}{active && <Badge variant="outline" className="composer-run-status"><i />{t(run?.status === 'cancelling' || cancelPending ? 'cancelling' : run?.status === 'queued' ? 'queued' : 'generating')}</Badge>}{currentPending?.state === 'sending' && <Badge variant="outline" className="composer-run-status"><Spinner className="spin" aria-label={t('loading')} />{t('sending')}</Badge>}</span>{active ? <Button type="button" className="stop-button" size="sm" variant="outline" onClick={() => void cancelRun()} disabled={cancelPending || run?.status === 'cancelling'} aria-label={t('stop')}>{cancelPending || run?.status === 'cancelling' ? <Spinner className="spin" aria-label={t('loading')} /> : <Square size={12} fill="currentColor" />}{t(cancelPending || run?.status === 'cancelling' ? 'stopping' : 'stop')}</Button> : <Button type="submit" className="send-button" size="icon" aria-label={t('send')} disabled={!networkOnline || !draft.trim() || Boolean(currentPending) || snapshotLoading || Boolean(snapshotError && messages.length === 0) || (config?.adapter === 'pi' && !config.configured)}>{currentPending?.state === 'sending' ? <Spinner className="spin" aria-label={t('loading')} /> : <ArrowUp size={19} />}</Button>}</div>
           </form>
-          <div className="composer-hint"><span>{t('autoSaved')}</span><span><kbd>↵</kbd> {t('enterToSend')}<span className="hint-divider">·</span>{t('shiftEnter')}</span></div>
+          <div className="composer-hint"><span>{t('autoSaved')}</span><span><Kbd>↵</Kbd> {t('enterToSend')}<span className="hint-divider">·</span>{t('shiftEnter')}</span></div>
         </div></div>
       </>}
     </main>
     <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">{announcement}</div>
     {dialog && <ConversationDialog key={`${dialog.type}:${dialog.conversation.id}`} action={dialog} t={t} onDismiss={() => setDialog(null)} onSaved={conversation => { if (conversation.archivedAt) { setConversations(previous => previous.filter(item => item.id !== conversation.id)); if (selectedId === conversation.id) navigate(null); } else setConversations(previous => previous.map(item => item.id === conversation.id ? conversation : item)); }} />}
-    {toast && <div className="toast" role="status"><Check size={16} /><span>{t(toast)}</span><button onClick={() => setToast(null)} aria-label={t('dismiss')}><X size={14} /></button></div>}
-  </div>;
+  </SidebarProvider></TooltipProvider></Toaster>;
 }
