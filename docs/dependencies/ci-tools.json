@@ -1,0 +1,18 @@
+{
+  "reviewedAt": "2026-11-04",
+  "usage": "External CI tools; not included in the application bundle",
+  "tools": [
+    {
+      "name": "actions/checkout",
+      "revision": "11bd71901bbe5b1630ceea73d27597364c9af683",
+      "license": "MIT",
+      "licenseSource": "https://raw.githubusercontent.com/actions/checkout/11bd71901bbe5b1630ceea73d27597364c9af683/LICENSE"
+    },
+    {
+      "name": "actions/setup-node",
+      "revision": "49933ea5288caeca8642d1e84afbd3f7d6820020",
+      "license": "MIT",
+      "licenseSource": "https://raw.githubusercontent.com/actions/setup-node/49933ea5288caeca8642d1e84afbd3f7d6820020/LICENSE"
+    }
+  ]
+}

@@ -4,6 +4,7 @@ import { existsSync, readFileSync, readdirSync, mkdirSync, writeFileSync } from 
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 const mode = process.argv[2] ?? 'check';
+const reviewDate = new Date().toISOString().slice(0, 10);
 const root = process.cwd();
 const hash = value => createHash('sha256').update(value).digest('hex');
 const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'));
@@ -81,7 +82,7 @@ async function inspect([path, info]) {
   files = supplement(manifest, files);
   if (!files.length) throw new Error(`No applicable upstream evidence: ${name}@${info.version}`);
   const evidence = fingerprints(files);
-  const record = { path, name: manifest.name ?? name, version: info.version, declaredLicense: manifest.license, selectedLicense, source: info.resolved, integrity: info.integrity, evidence, usage: 'Application, build or test dependency; see lockfile dev/optional flags', reviewedAt: '2026-11-04' };
+  const record = { path, name: manifest.name ?? name, version: info.version, declaredLicense: manifest.license, selectedLicense, source: info.resolved, integrity: info.integrity, evidence, usage: 'Application, build or test dependency; see lockfile dev/optional flags', reviewedAt: mode === 'review' ? reviewDate : previous?.packages.find(p => p.path === path)?.reviewedAt ?? reviewDate };
   if (mode !== 'review') {
     const approved = previous?.packages.find(p => p.path === path);
     if (!approved || JSON.stringify({ ...approved, usage: record.usage }) !== JSON.stringify(record)) throw new Error(`Unreviewed or changed dependency evidence: ${name}@${info.version}`);
@@ -100,7 +101,7 @@ else {
   if (mode === 'review') {
     mkdirSync('docs/dependencies', { recursive: true });
     const shadcn = JSON.parse(readFileSync('docs/dependencies/shadcn-sources.json', 'utf8'));
-    writeFileSync(inventoryPath, JSON.stringify({ schemaVersion: 1, reviewedAt: '2026-11-04', lockfileSha256: hash(readFileSync('package-lock.json')), packages: checked }, null, 2) + '\n');
+    writeFileSync(inventoryPath, JSON.stringify({ schemaVersion: 1, reviewedAt: reviewDate, lockfileSha256: hash(readFileSync('package-lock.json')), packages: checked }, null, 2) + '\n');
     notices += '\n## shadcn/ui copied components\n\n' + readFileSync('vendor/shadcn/LICENSE', 'utf8');
     for (const r of shadcn.components) notices += `\n${r.path}\nSource: ${r.source}\nChanges: ${r.modifications}\n`;
     writeFileSync('THIRD_PARTY_NOTICES.txt', notices);

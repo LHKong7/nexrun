@@ -16,7 +16,7 @@
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "eslint .",
-    "test": "node --env-file-if-exists=.env --import tsx --test apps/api/test/*.test.ts",
+    "test": "node --env-file-if-exists=.env --import tsx --test apps/api/test/*.test.ts scripts/license-gate.test.mjs",
     "test:e2e": "playwright test",
     "test:pi": "RUN_PI_SMOKE=1 node --env-file-if-exists=.env --import tsx scripts/pi-smoke.ts",
     "db:migrate": "npm run db:migrate --workspace @nexrun/api",
