@@ -206,9 +206,9 @@ Verification date: 2026-11-04. This sprint is not signed off as fully complete w
 | S1-03 | Implemented; English/Chinese catalogs, official shadcn Base UI primitives, responsive routes and contracts |
 | S1-04 | Implemented; PostgreSQL persistence, migrations and owner-scoped chat APIs verified |
 | S1-05 | Implemented; replay, idempotency, cancellation, partial persistence and conservative restart behavior verified |
-| S1-06 | Implemented; all seven mock-backed browser acceptance scenarios passed, including offline recovery and Chinese mobile IME |
-| S1-07 | Implemented; 16 deterministic Pi host tests passed, but live OpenAI/Pi acceptance is blocked by HTTP 401 authentication |
-| S1-08 | Local typecheck, lint, build and 35 automated tests passed; browser tests passed; final acceptance still depends on S1-07 |
+| S1-06 | Implemented; all ten mock-backed browser acceptance scenarios passed, including concise replies, language independence, pagination, offline recovery and Chinese mobile IME |
+| S1-07 | Implemented; 22 deterministic Pi host/output tests passed, including real SDK events with a synthetic stream, but live OpenAI/Pi acceptance remains blocked by HTTP 401 authentication |
+| S1-08 | Local typecheck, lint, build and 65 automated tests passed; all ten browser scenarios passed; final acceptance still depends on S1-07 |
 | S1-09 | Not started; optional refinements remain deferred |
 
 The initial browser run exposed an offline status bug. It was fixed with explicit browser offline/online handling and a fresh snapshot before reconnect; the original assertions were retained. Browser tests now use their own generated PostgreSQL schema and temporary Pi state rather than sharing development chat history.
@@ -216,3 +216,7 @@ The initial browser run exposed an offline status bug. It was fixed with explici
 Git checkpoints: `b4a591d` records the plan; `d687f99` adds workspace and license admission; `b1e583f` adds the API and Pi host; `862924d` adds the chat UI. Later verification/runbook commits are listed in Git history.
 
 The first real Pi smoke failed safely, and a direct OpenAI authentication probe returned HTTP 401. No successful real reply or live context-retention result is claimed. Configure a valid `NEXRUN_OPENAI_API_KEY` in the ignored root `.env` and run `npm run test:pi` to complete this gate. The mock mode remains usable without a model credential. CI configuration is committed, but no remote CI execution is claimed by local checks.
+
+The mock/test follow-up replaces prompt/history reflection with concise deterministic answers, adds explicit formatting/context/failure fixtures, and enforces a current-assistant public-text boundary in the Pi host. Seven repeatable demo conversations contain 72 terminal Runs and 144 synthetic messages, including bilingual content, 60-turn history, and failed/stopped/interrupted examples. Import preserves existing IDs and user edits; its loopback guard rejects routing overrides. See the separate [testing and mock-data guide](../testing.md).
+
+The expanded browser suite initially exposed a test-helper race: after a second send, a terminal-state assertion could select the previous completed turn. It now waits for the exact newly submitted assistant message order. All substantive assertions were retained, and the complete ten-scenario suite passed. Isolated browser/demo test schemas were confirmed removed after teardown. This follow-up makes no new model requests and does not change the live authentication blocker.

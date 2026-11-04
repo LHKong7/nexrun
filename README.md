@@ -46,7 +46,7 @@ The database uses the `nexrun-postgres` named volume. `npm run db:down` stops th
 
 Create a chat, send a message, and watch one assistant reply grow as text arrives. The UI supports English and Simplified Chinese, Markdown/code copying, conversation rename/archive, mobile navigation, and drafts retained during navigation. Archived chats leave the default list; an active chat must finish or stop before it can be archived.
 
-In mock mode, a normal message produces a deterministic reply with a code block. Start a message with `/slow` to exercise slow streaming and Stop, or `/error` to exercise a provider failure with retained partial text. These are development fixtures, not Pi commands.
+In mock mode, normal messages receive brief deterministic replies without echoing the prompt or conversation. Use `/code` or `/markdown` for fixed formatting fixtures, `/slow` for Stop/reconnect checks, `/error` for a retained partial failure, and `/remember <value>` followed by `/context` for bounded relevant context. `npm run demo:seed` adds seven repeatable bilingual/historical demo chats to a loopback mock database while preserving existing chats and edits. See the [complete testing and mock-data guide](docs/testing.md) for scenarios and coverage. These fixtures are not Pi commands.
 
 Messages, Runs, and sequenced events are persisted in PostgreSQL. Leaving a chat, refreshing, or losing the browser connection does not cancel a server-owned Run. SSE replay reconstructs the canonical reply rather than appending duplicate text. Only one Run may be active in a conversation; the configured service limit is two concurrent Runs across conversations, with excess work rejected explicitly.
 
