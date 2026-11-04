@@ -36,6 +36,18 @@ test('ordinary mock replies are deterministic, concise, and do not reflect raw p
   assert.notEqual(buildMockScenario('Help me write a first draft').text, buildMockScenario('Explain this topic').text);
 });
 
+test('configured response language overrides prompt detection without rewriting input or remembered content', async () => {
+  const chineseInput = input('请给我一个简短建议');
+  let english = '';
+  await createMockAdapter({ responseLanguage: 'en' }).generate(chineseInput, async text => { english = text; });
+  assert.doesNotMatch(english, /\p{Script=Han}/u);
+  assert.equal(chineseInput.prompt, '请给我一个简短建议');
+  let chinese = '';
+  await createMockAdapter({ responseLanguage: 'zh-CN' }).generate(input('Give one brief suggestion'), async text => { chinese = text; });
+  assert.match(chinese, /\p{Script=Han}/u);
+  assert.equal(buildMockScenario('/context', [{ role: 'user', content: '/remember Original code: greet()' }], 'zh-CN').text, 'Original code: greet()');
+});
+
 test('reply language follows the current prompt independently of conversation history', () => {
   const chinese = buildMockScenario('请解释这个问题', [{ role: 'user', content: 'English history must not choose the reply language.' }]);
   assert.equal(chinese.language, 'zh-CN');

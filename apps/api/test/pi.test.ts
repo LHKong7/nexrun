@@ -85,6 +85,13 @@ test('Pi host exposes no tools, instructions, extensions, skills or prompt resou
       assert.doesNotMatch(session.systemPrompt, /HOST_INSTRUCTION_MUST_NOT_LOAD/);
       assert.equal(session.promptTemplates.length, 0);
     } finally { session.dispose(); }
+    const localizedOptions = await textOnlySessionOptions(sdk, directory, directory, sdk.SessionManager.inMemory(directory), 'gpt-5-mini', 'zh-CN');
+    const localized = await sdk.createAgentSession(localizedOptions);
+    try {
+      assert.match(localized.session.systemPrompt, /Use Simplified Chinese for assistant prose/);
+      assert.match(localized.session.systemPrompt, /independently of the UI locale/);
+      assert.deepEqual(localized.session.getActiveToolNames(), []);
+    } finally { localized.session.dispose(); }
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
@@ -230,6 +237,16 @@ test('Pi prefers an explicit project key over a generic injected provider key', 
   assert.equal(selectedPiApiKey({ OPENAI_API_KEY: 'generic-test-placeholder' }), 'generic-test-placeholder');
   assert.equal(selectedPiApiKey({}), undefined);
   assert.equal(piHostEnvironment(selectedPiApiKey({ NEXRUN_OPENAI_API_KEY: 'project-test-placeholder', OPENAI_API_KEY: 'generic-test-placeholder' })!).OPENAI_API_KEY, 'project-test-placeholder');
+});
+
+test('Pi can use an explicit stored key or disable all environment fallback without mutating the environment', () => {
+  const inherited = selectedPiApiKey();
+  const disabled = createPiAdapter({ stateDir: '/tmp/unused-pi-settings', apiKey: null });
+  const configured = createPiAdapter({ stateDir: '/tmp/unused-pi-settings', apiKey: 'test-only-stored-key-placeholder' });
+  assert.equal(disabled.configured, false);
+  assert.equal(configured.configured, true);
+  assert.equal(selectedPiApiKey(), inherited);
+  assert.throws(() => createPiAdapter({ stateDir: '/tmp/unused-pi-settings', responseLanguage: 'unsupported' as never }), { code: 'VALIDATION_ERROR' });
 });
 
 test('Pi exposes only enumerated failure diagnostics without raw authentication responses', () => {

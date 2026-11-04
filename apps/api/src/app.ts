@@ -1,21 +1,26 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import { Pool, type PoolClient } from 'pg';
 import type { ServerResponse } from 'node:http';
-import type { ApiError, RuntimeConfig } from '@nexrun/protocol';
+import type { ApiError, CredentialCheck, RuntimeConfig } from '@nexrun/protocol';
 import { loadConfig, type ApiConfig } from './config.js';
-import { migrate } from './db.js';
+import { migrate, TransactionCommitUnknownError } from './db.js';
 import { AppError, validation } from './errors.js';
 import { ChatStore } from './store.js';
 import { Dispatcher } from './dispatcher.js';
 import { createMockAdapter } from './agents/mock.js';
 import { createPiAdapter } from './agents/pi.js';
 import type { AgentAdapter } from './agents/types.js';
+import { SettingsStore, adminAccess, authorizeAdmin, checkOpenAiCredential, type EffectiveSettings } from './settings.js';
+import { AdmissionGate, RuntimeAdapter } from './runtime.js';
 
 export interface BuildAppOptions {
   config?: Partial<ApiConfig>;
   adapter?: AgentAdapter;
   pool?: Pool;
   reconcileOnStart?: boolean;
+  adapterFactory?: (settings: EffectiveSettings) => AgentAdapter;
+  settingsChecker?: (settings: EffectiveSettings) => Promise<CredentialCheck>;
+  settingsEnvironment?: NodeJS.ProcessEnv;
 }
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -49,15 +54,35 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   let dispatcher: Dispatcher | undefined;
   const streams = new Set<ServerResponse>();
   const app = Fastify({ logger: false, bodyLimit: 100_000, requestTimeout: 30_000 });
+  let configurationAvailable = true;
+  const failClosed = (): void => {
+    if (!configurationAvailable) return;
+    configurationAvailable = false;
+    queueMicrotask(() => { void app.close().catch(() => undefined); });
+  };
   try {
     singleton = await pool.connect();
     const lock = await singleton.query<{ acquired: boolean }>("SELECT pg_try_advisory_lock(hashtext('nexrun-sprint1-api'), hashtext(current_schema())) AS acquired");
     if (!lock.rows[0]?.acquired) throw new Error('Another API instance owns this database schema.');
     await migrate(pool);
-    const adapter = options.adapter ?? (config.agentMode === 'pi' ? createPiAdapter({ stateDir: config.stateDir, ...(config.model ? { model: config.model } : {}), provider: config.provider, generationTimeoutMs: config.generationTimeoutMs }) : createMockAdapter());
+    if (options.adapter) config.agentMode = options.adapter.mode;
+    const settings = new SettingsStore(pool, config, { environment: options.settingsEnvironment ?? process.env });
+    await settings.initialize();
+    const factory = options.adapterFactory ?? ((effective: EffectiveSettings): AgentAdapter => effective.adapter === 'pi'
+      ? createPiAdapter({ stateDir: config.stateDir, model: effective.model, provider: effective.provider, generationTimeoutMs: config.generationTimeoutMs, apiKey: effective.apiKey ?? null, responseLanguage: effective.responseLanguage })
+      : createMockAdapter({ responseLanguage: effective.responseLanguage }));
+    const applyConfig = (effective: EffectiveSettings): void => {
+      config.agentMode = effective.adapter;
+      config.provider = effective.provider;
+      config.model = effective.model;
+      config.responseLanguage = effective.responseLanguage;
+    };
+    applyConfig(settings.getEffective());
+    const adapter = new RuntimeAdapter(options.adapter ?? factory(settings.getEffective()));
     config.agentMode = adapter.mode;
+    const admission = new AdmissionGate();
     const store = new ChatStore(pool, config);
-    dispatcher = new Dispatcher(store, adapter, config, () => { queueMicrotask(() => { void app.close().catch(() => undefined); }); });
+    dispatcher = new Dispatcher(store, adapter, config, failClosed);
     if (options.reconcileOnStart !== false) {
       // Runtime changes do not make hosts from the previous Pi mode disappear.
       // A recovery-only adapter never submits a model request or needs a valid key.
@@ -88,12 +113,16 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       reply.header('Cache-Control', 'no-store');
       if (request.method === 'OPTIONS') {
         reply.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
-        reply.header('Access-Control-Allow-Headers', 'Content-Type, Idempotency-Key, Last-Event-ID');
+        reply.header('Access-Control-Allow-Headers', 'Content-Type, Idempotency-Key, Last-Event-ID, Authorization');
         return reply.code(204).send();
       }
     });
 
     app.setErrorHandler((error, _request, reply) => {
+      if (error instanceof TransactionCommitUnknownError || (error instanceof AppError && error.code === 'SETTINGS_COMMIT_UNKNOWN')) {
+        failClosed();
+        return reply.code(503).send({ error: { code: 'SETTINGS_COMMIT_UNKNOWN', message: 'SETTINGS_COMMIT_UNKNOWN' } } satisfies ApiError);
+      }
       const known = error instanceof AppError;
       const suppliedStatus = typeof error === 'object' && error !== null && 'statusCode' in error && typeof error.statusCode === 'number' ? error.statusCode : undefined;
       const code = known ? error.code : suppliedStatus && suppliedStatus < 500 ? 'VALIDATION_ERROR' : 'INTERNAL_ERROR';
@@ -104,7 +133,62 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     app.setNotFoundHandler((_request, reply) => reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'NOT_FOUND' } } satisfies ApiError));
 
     app.get('/healthz', async () => ({ status: 'ok' }));
-    app.get('/api/config', async (): Promise<RuntimeConfig> => ({ adapter: adapter.mode, configured: adapter.configured, model: adapter.model }));
+    app.get('/api/config', async (): Promise<RuntimeConfig> => {
+      if (!configurationAvailable) throw new AppError('SETTINGS_UNAVAILABLE', 503);
+      return { adapter: adapter.mode, configured: adapter.configured, model: adapter.model, responseLanguage: config.responseLanguage ?? 'auto' };
+    });
+    const activeCount = async (): Promise<number> => {
+      const result = await pool.query<{ count: number }>("SELECT count(*)::int AS count FROM runs r JOIN conversations c ON c.id = r.conversation_id WHERE c.owner_id = $1 AND r.status IN ('queued', 'running', 'cancelling')", [config.ownerId]);
+      return Math.max(result.rows[0]!.count, execution.activeCount);
+    };
+    app.get('/api/admin/access', async request => adminAccess(request, config));
+    app.get('/api/admin/settings', async request => {
+      authorizeAdmin(request, config);
+      if (!configurationAvailable) throw new AppError('SETTINGS_UNAVAILABLE', 503);
+      return settings.getPublic(await activeCount());
+    });
+    app.patch('/api/admin/settings', async request => {
+      authorizeAdmin(request, config);
+      return admission.run(async () => {
+        if (!configurationAvailable) throw new AppError('SETTINGS_UNAVAILABLE', 503);
+        const update = await settings.prepareUpdate(request.body);
+        if (execution.busy || await activeCount()) throw new AppError('SETTINGS_BUSY', 409);
+        const prospective = settings.preview(update);
+        let next: AgentAdapter;
+        try {
+          next = factory(prospective);
+          if (next.mode !== prospective.adapter) throw new Error('Invalid adapter factory result.');
+        } catch { throw new AppError('CONFIGURATION_ERROR', 500); }
+        try { await settings.update(update); }
+        catch (error) {
+          if (error instanceof TransactionCommitUnknownError || (error instanceof AppError && error.code === 'SETTINGS_COMMIT_UNKNOWN')) failClosed();
+          await next.dispose?.().catch(() => undefined);
+          throw error;
+        }
+        const previous = adapter.replace(next);
+        applyConfig(settings.getEffective());
+        try { await previous.dispose?.(); }
+        catch {
+          failClosed();
+          throw new AppError('CONFIGURATION_ERROR', 500);
+        }
+        return settings.getPublic(await activeCount());
+      });
+    });
+    app.post('/api/admin/connection-check', async request => {
+      authorizeAdmin(request, config);
+      const body = object(request.body);
+      noExtraKeys(body, ['revision']);
+      if (!Number.isSafeInteger(body.revision) || (body.revision as number) < 0) validation({ field: 'revision' });
+      const effective = await admission.run(async () => {
+        if (!configurationAvailable) throw new AppError('SETTINGS_UNAVAILABLE', 503);
+        const current = settings.getEffective();
+        if (body.revision !== current.revision) throw new AppError('SETTINGS_CONFLICT', 409);
+        return current;
+      });
+      try { return await (options.settingsChecker ?? checkOpenAiCredential)(effective); }
+      catch { return { ok: false, code: 'NETWORK_ERROR', checkedAt: new Date().toISOString(), revision: effective.revision } satisfies CredentialCheck; }
+    });
     app.get<{ Querystring: { cursor?: string; limit?: string } }>('/api/conversations', async (request) => {
       const limit = number(request.query.limit, 30, 1, 100)!;
       let cursor: { updatedAt: string; id: string } | undefined;
@@ -140,8 +224,17 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       if (typeof body.content !== 'string' || !body.content.trim() || body.content.includes('\0') || body.content.length > config.maxInputCharacters) validation({ field: 'content', maximum: config.maxInputCharacters });
       const key = request.headers['idempotency-key'];
       if (typeof key !== 'string' || !/^[a-zA-Z0-9._:-]{1,128}$/.test(key)) validation({ field: 'Idempotency-Key' });
-      const accepted = await store.acceptMessage(conversationId, body.content, key, adapter.configured);
-      execution.wake();
+      const accepted = await admission.run(async () => {
+        if (!configurationAvailable) throw new AppError('SETTINGS_UNAVAILABLE', 503);
+        try {
+          const result = await store.acceptMessage(conversationId, body.content as string, key, adapter.configured);
+          execution.wake();
+          return result;
+        } catch (error) {
+          if (error instanceof TransactionCommitUnknownError) failClosed();
+          throw error;
+        }
+      });
       return reply.code(202).send(accepted);
     });
     app.get<{ Params: { id: string } }>('/api/runs/:id', async (request) => store.getRun(id(request.params.id, 'RUN_NOT_FOUND')));

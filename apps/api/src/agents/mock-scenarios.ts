@@ -1,4 +1,5 @@
 import type { AgentInput } from './types.js';
+import type { ResponseLanguage } from '@nexrun/protocol';
 
 export type MockLanguage = 'en' | 'zh-CN';
 export type MockScenarioName = 'ordinary' | 'slow' | 'error' | 'code' | 'markdown' | 'remember' | 'context';
@@ -95,12 +96,12 @@ function ordinaryReply(prompt: string, language: MockLanguage): string {
 
 /**
  * Build deterministic presentation data without performing I/O or retaining cross-conversation state.
- * The last recognized explicit response-language request wins; otherwise Han characters select zh-CN.
- * Both rules use only the current prompt, independently of UI locale and history.
+ * A fixed response language overrides detection. In auto mode, the last explicit language request wins;
+ * otherwise Han characters select zh-CN. Detection uses only the current prompt, independently of UI locale and history.
  * Only explicit /context reads history, and only prior user /remember commands can supply its bounded value.
  */
-export function buildMockScenario(prompt: string, history: History = []): MockScenario {
-  const language = requestedLanguage(prompt);
+export function buildMockScenario(prompt: string, history: History = [], responseLanguage: ResponseLanguage = 'auto'): MockScenario {
+  const language = responseLanguage === 'auto' ? requestedLanguage(prompt) : responseLanguage;
   const parsed = command(prompt);
   const name = parsed?.name ?? 'ordinary';
   let text: string;

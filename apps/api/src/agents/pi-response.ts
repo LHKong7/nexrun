@@ -1,4 +1,5 @@
 import type { AgentSessionEvent } from '@earendil-works/pi-coding-agent';
+import type { ResponseLanguage } from '@nexrun/protocol';
 
 type AssistantMessage = Extract<Extract<AgentSessionEvent, { type: 'message_end' }>['message'], { role: 'assistant' }>;
 type MessageIdentity = Pick<AssistantMessage, 'timestamp' | 'api' | 'provider' | 'model'>;
@@ -11,6 +12,14 @@ export const PI_RESPONSE_SYSTEM_PROMPT = [
   'Do not include a whole chat transcript, internal reasoning or chain-of-thought, execution traces, or status logs in your answer. Give the user the answer rather than a replay of how it was produced.',
   'You have no tools, filesystem access, shell, browser, extensions, or external actions. Do not claim to have read files, browsed, executed commands, modified resources, or performed other actions you cannot actually perform.',
 ].join('\n\n');
+
+export function piResponseSystemPrompt(language: ResponseLanguage = 'auto'): string {
+  if (language === 'auto') return PI_RESPONSE_SYSTEM_PROMPT;
+  return PI_RESPONSE_SYSTEM_PROMPT.replace(
+    "Use the user's requested response language, independently of the UI locale.",
+    `Use ${language === 'en' ? 'English' : 'Simplified Chinese'} for assistant prose, independently of the UI locale. Preserve original quotations, code, commands, identifiers, and user-provided content.`,
+  );
+}
 
 /** Collect only the current assistant's public text, never aggregate session history. */
 export class PiResponseCollector {

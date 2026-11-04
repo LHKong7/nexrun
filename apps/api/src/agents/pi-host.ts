@@ -6,10 +6,11 @@ import type {
   AgentSession, CreateAgentSessionOptions, ExtensionRuntime, ResourceLoader, SessionManager,
 } from '@earendil-works/pi-coding-agent';
 import type { PiFailureDiagnostic, PiHostRequest } from './pi.js';
-import { PI_RESPONSE_SYSTEM_PROMPT, PiResponseCollector } from './pi-response.js';
+import { piResponseSystemPrompt, PiResponseCollector } from './pi-response.js';
+import type { ResponseLanguage } from '@nexrun/protocol';
 
 /** The host owns all resources; no default loader or filesystem discovery is used. */
-export function createTextOnlyResourceLoader(createRuntime: () => ExtensionRuntime): ResourceLoader {
+export function createTextOnlyResourceLoader(createRuntime: () => ExtensionRuntime, responseLanguage: ResponseLanguage = 'auto'): ResourceLoader {
   const extensions = { extensions: [], errors: [], runtime: createRuntime() };
   return {
     getExtensions: () => extensions,
@@ -17,7 +18,7 @@ export function createTextOnlyResourceLoader(createRuntime: () => ExtensionRunti
     getPrompts: () => ({ prompts: [], diagnostics: [] }),
     getThemes: () => ({ themes: [], diagnostics: [] }),
     getAgentsFiles: () => ({ agentsFiles: [] }),
-    getSystemPrompt: () => PI_RESPONSE_SYSTEM_PROMPT,
+    getSystemPrompt: () => piResponseSystemPrompt(responseLanguage),
     getSystemPromptSource: () => undefined,
     getAppendSystemPrompt: () => [],
     getAppendSystemPromptSources: () => [],
@@ -79,6 +80,7 @@ export async function textOnlySessionOptions(
   agentDir: string,
   sessionManager: SessionManager,
   modelId: string,
+  responseLanguage: ResponseLanguage = 'auto',
 ): Promise<CreateAgentSessionOptions> {
   // Empty in-memory credential storage and settings avoid all personal auth/settings.
   const modelRuntime = await sdk.ModelRuntime.create({
@@ -100,7 +102,7 @@ export async function textOnlySessionOptions(
   return {
     cwd, agentDir, modelRuntime, model, thinkingLevel: 'off',
     tools: [], noTools: 'all', customTools: [],
-    resourceLoader: createTextOnlyResourceLoader(sdk.createExtensionRuntime),
+    resourceLoader: createTextOnlyResourceLoader(sdk.createExtensionRuntime, responseLanguage),
     settingsManager, sessionManager,
   };
 }
@@ -129,6 +131,7 @@ function isRequest(raw: unknown): raw is PiHostRequest {
     && request.provider === 'openai' && typeof request.model === 'string'
     && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(request.model)
     && typeof request.generationTimeoutMs === 'number'
+    && (request.responseLanguage === undefined || ['auto', 'en', 'zh-CN'].includes(request.responseLanguage as string))
     && Number.isSafeInteger(request.generationTimeoutMs)
     && request.generationTimeoutMs > 0 && request.generationTimeoutMs <= 900_000;
 }
@@ -204,6 +207,7 @@ export function startPiHost(): void {
     let manager: SessionManager;
     if (manifest) {
       if (manifest.schemaVersion !== 1 || manifest.conversationId !== request.conversationId
+          || manifest.provider !== request.provider || manifest.model !== request.model
           || manifest.sdkVersion !== sdk.VERSION || typeof manifest.nativeSessionFile !== 'string'
           || dirname(manifest.nativeSessionFile) !== sessionsDir
           || !basename(manifest.nativeSessionFile).endsWith('.jsonl')) throw codedError('RUN_INTERRUPTED');
@@ -220,7 +224,7 @@ export function startPiHost(): void {
       if (request.hasPriorHistory) throw codedError('RUN_INTERRUPTED');
       manager = sdk.SessionManager.create(cwd, sessionsDir);
     }
-    const options = await textOnlySessionOptions(sdk, cwd, agentDir, manager, request.model);
+    const options = await textOnlySessionOptions(sdk, cwd, agentDir, manager, request.model, request.responseLanguage);
     const created = await sdk.createAgentSession(options);
     session = created.session;
     const resources = options.resourceLoader!;

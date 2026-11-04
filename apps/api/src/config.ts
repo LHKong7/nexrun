@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import type { ResponseLanguage } from '@nexrun/protocol';
 
 export interface ApiConfig {
   host: string;
@@ -9,6 +10,9 @@ export interface ApiConfig {
   stateDir: string;
   model?: string;
   provider: 'openai';
+  responseLanguage: ResponseLanguage;
+  adminToken?: string;
+  encryptionKey?: string;
   allowedHosts: string[];
   allowedOrigins: string[];
   maxConcurrentRuns: number;
@@ -36,6 +40,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
   const agentMode = env.AGENT_MODE ?? 'mock';
   if (agentMode !== 'mock' && agentMode !== 'pi') throw new Error('Invalid AGENT_MODE.');
   if (env.PI_PROVIDER && env.PI_PROVIDER !== 'openai') throw new Error('Unsupported PI_PROVIDER.');
+  const responseLanguage = env.AGENT_RESPONSE_LANGUAGE ?? 'auto';
+  if (responseLanguage !== 'auto' && responseLanguage !== 'en' && responseLanguage !== 'zh-CN') throw new Error('Invalid AGENT_RESPONSE_LANGUAGE.');
   const port = integer(env.API_PORT ?? env.PORT, 3001, 1, 65535);
   return {
     host: env.API_HOST ?? '127.0.0.1',
@@ -46,6 +52,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     stateDir: resolve(env.PI_STATE_DIR ?? '.data/pi'),
     ...(env.PI_MODEL ? { model: env.PI_MODEL } : {}),
     provider: 'openai',
+    responseLanguage,
+    ...(env.NEXRUN_ADMIN_TOKEN ? { adminToken: env.NEXRUN_ADMIN_TOKEN } : {}),
+    ...(env.NEXRUN_CONFIG_ENCRYPTION_KEY ? { encryptionKey: env.NEXRUN_CONFIG_ENCRYPTION_KEY } : {}),
     allowedHosts: list(env.ALLOWED_HOSTS, [`127.0.0.1:${port}`, `localhost:${port}`, '127.0.0.1:5173', 'localhost:5173']),
     allowedOrigins: list(env.ALLOWED_ORIGINS, [`http://127.0.0.1:${port}`, `http://localhost:${port}`, 'http://127.0.0.1:5173', 'http://localhost:5173']),
     maxConcurrentRuns: integer(env.MAX_CONCURRENT_RUNS, 2, 1, 16),

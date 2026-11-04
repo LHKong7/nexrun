@@ -233,7 +233,7 @@ test('Host/Origin and owner boundaries apply to commands, history, Runs, and SSE
   }
   assert.equal((await f.request({ method: 'POST', url: `/api/runs/${accepted.run.id}/cancel`, payload: {} })).statusCode, 404);
   assert.equal((await f.request({ method: 'GET', url: '/api/conversations' })).json().conversations.length, 0);
-  assert.deepEqual((await f.request({ method: 'GET', url: '/api/config' })).json(), { adapter: 'mock', configured: true, model: null });
+  assert.deepEqual((await f.request({ method: 'GET', url: '/api/config' })).json(), { adapter: 'mock', configured: true, model: null, responseLanguage: 'auto' });
 });
 
 test('invalid and expired event cursors require explicit resynchronization', async (t) => {

@@ -1,15 +1,16 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { buildMockScenario } from './mock-scenarios.js';
 import type { AgentAdapter } from './types.js';
+import type { ResponseLanguage } from '@nexrun/protocol';
 
-export function createMockAdapter(): AgentAdapter {
+export function createMockAdapter(options: { responseLanguage?: ResponseLanguage } = {}): AgentAdapter {
   return {
     mode: 'mock',
     configured: true,
     model: null,
     async generate(input, onText) {
       input.signal.throwIfAborted();
-      const scenario = buildMockScenario(input.prompt, input.history);
+      const scenario = buildMockScenario(input.prompt, input.history, options.responseLanguage);
       const characters = Array.from(scenario.text);
       for (let offset = scenario.chunkSize; offset < characters.length + scenario.chunkSize; offset += scenario.chunkSize) {
         input.signal.throwIfAborted();

@@ -6,12 +6,15 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { AgentAdapter, AgentInput } from './types.js';
+import type { ResponseLanguage } from '@nexrun/protocol';
 
 export interface PiAdapterOptions {
   stateDir: string;
   model?: string;
   provider?: 'openai';
   generationTimeoutMs?: number;
+  apiKey?: string | null;
+  responseLanguage?: ResponseLanguage;
 }
 
 export interface PiHostRequest {
@@ -24,6 +27,7 @@ export interface PiHostRequest {
   prompt: string;
   hasPriorHistory: boolean;
   generationTimeoutMs: number;
+  responseLanguage?: ResponseLanguage;
 }
 
 const ERROR_CODES = new Set([
@@ -275,11 +279,13 @@ export function createPiAdapter(options: PiAdapterOptions): AgentAdapter {
   const model = options.model ?? process.env.PI_MODEL ?? 'gpt-5-mini';
   const provider = options.provider ?? 'openai';
   const timeout = options.generationTimeoutMs ?? 120_000;
+  const responseLanguage = options.responseLanguage ?? 'auto';
   if (provider !== 'openai' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(model)
+      || !['auto', 'en', 'zh-CN'].includes(responseLanguage)
       || !Number.isSafeInteger(timeout) || timeout < 1 || timeout > 900_000) {
     throw new PiAdapterError('VALIDATION_ERROR');
   }
-  const apiKey = selectedPiApiKey();
+  const apiKey = options.apiKey === undefined ? selectedPiApiKey() : options.apiKey || undefined;
   const active = new Map<string, { controller: AbortController; promise: Promise<void> }>();
   let disposed = false;
   let reconciling = false;
@@ -330,6 +336,7 @@ export function createPiAdapter(options: PiAdapterOptions): AgentAdapter {
           type: 'generate', conversationId: input.conversationId, runId: input.runId,
           conversationDir, model, provider, prompt: input.prompt,
           hasPriorHistory: input.history.length > 0, generationTimeoutMs: timeout,
+          responseLanguage,
         }, controller.signal, onText, async () => {
           if (!child.pid) throw new PiAdapterError('RUN_INTERRUPTED');
           await recordHost(registryPath, { schemaVersion: 1, pid: child.pid, marker, runId: input.runId });

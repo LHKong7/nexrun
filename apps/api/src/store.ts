@@ -120,8 +120,9 @@ export class ChatStore {
       if (conversation.archived_at) throw new AppError('CONVERSATION_ARCHIVED', 409);
       if (await this.activeRun(client, conversationId)) throw new AppError('CONVERSATION_BUSY', 409);
       if (!configured) throw new AppError('AGENT_NOT_CONFIGURED', 503);
-      const session = await client.query<{ adapter: string }>('SELECT adapter FROM agent_sessions WHERE conversation_id = $1', [conversationId]);
+      const session = await client.query<{ adapter: string; model: string | null; provider: string | null }>('SELECT adapter, model, provider FROM agent_sessions WHERE conversation_id = $1', [conversationId]);
       if (session.rows[0] && session.rows[0].adapter !== this.config.agentMode) throw new AppError('AGENT_SESSION_MISMATCH', 409);
+      if (session.rows[0]?.adapter === 'pi' && (session.rows[0].model !== (this.config.model ?? 'gpt-5-mini') || session.rows[0].provider !== this.config.provider)) throw new AppError('AGENT_SESSION_MISMATCH', 409);
       await client.query("SELECT pg_advisory_xact_lock(hashtext('nexrun-admission'), hashtext(current_schema()))");
       const count = await client.query<{ count: string }>('SELECT count(*) FROM runs r JOIN conversations c ON c.id = r.conversation_id WHERE c.owner_id = $1 AND r.status = ANY($2::text[])', [this.config.ownerId, activeStatuses]);
       if (Number(count.rows[0]!.count) >= this.config.maxConcurrentRuns) throw new AppError('SERVICE_BUSY', 429);
@@ -132,7 +133,7 @@ export class ChatStore {
       await client.query("INSERT INTO messages (id, conversation_id, run_id, role, content, status, order_no) VALUES ($1, $2, $3, 'user', $4, 'completed', $5), ($6, $2, $3, 'assistant', '', 'pending', $7)", [userId, conversationId, runId, content, conversation.next_message_order + 1, assistantId, conversation.next_message_order + 2]);
       const defaultTitle = Array.from(content.trim().replace(/\s+/gu, ' ')).slice(0, 72).join('');
       await client.query('UPDATE conversations SET next_message_order = next_message_order + 2, title = $2, updated_at = clock_timestamp() WHERE id = $1', [conversationId, !conversation.custom_title && conversation.next_message_order === 0 ? defaultTitle : conversation.title]);
-      await client.query("INSERT INTO agent_sessions (conversation_id, adapter, native_session_ref, persistence_location) VALUES ($1, $2, $3, $4) ON CONFLICT (conversation_id) DO NOTHING", [conversationId, this.config.agentMode, conversationId, this.config.agentMode === 'pi' ? this.config.stateDir : null]);
+      await client.query("INSERT INTO agent_sessions (conversation_id, adapter, native_session_ref, persistence_location, model, provider) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (conversation_id) DO NOTHING", [conversationId, this.config.agentMode, conversationId, this.config.agentMode === 'pi' ? this.config.stateDir : null, this.config.agentMode === 'pi' ? this.config.model ?? 'gpt-5-mini' : null, this.config.agentMode === 'pi' ? this.config.provider : null]);
       await client.query('INSERT INTO command_outbox (id, run_id) VALUES ($1, $2)', [randomUUID(), runId]);
       const accepted = await this.accepted(client, run.rows[0]!, 0);
       accepted.cursor = await this.emit(client, conversationId, 'message.accepted', { userMessage: accepted.userMessage, assistantMessage: accepted.assistantMessage, run: accepted.run });

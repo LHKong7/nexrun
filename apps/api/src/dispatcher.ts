@@ -13,6 +13,9 @@ export class Dispatcher {
 
   constructor(private readonly store: ChatStore, private readonly adapter: AgentAdapter, private readonly config: ApiConfig, private readonly onPersistenceFailure?: () => void) {}
 
+  get activeCount(): number { return this.active.size; }
+  get busy(): boolean { return this.closed || this.draining || this.active.size > 0; }
+
   private failClosed(): void {
     this.closed = true;
     this.onPersistenceFailure?.();
