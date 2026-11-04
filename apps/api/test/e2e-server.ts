@@ -6,6 +6,7 @@ import type { FastifyInstance } from 'fastify';
 import { Pool } from 'pg';
 import { buildApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
+import { createMockAdapter } from '../src/agents/mock.js';
 
 // The generated identifier never includes an environment variable or user input.
 const schema = `nexrun_e2e_${process.pid}_${randomBytes(8).toString('hex')}`;
@@ -18,6 +19,8 @@ let stopping = false;
 let shutdownPromise: Promise<void> | undefined;
 
 async function initialize(): Promise<void> {
+  // Browser settings tests use only synthetic credentials. No inherited key is
+  // supplied to a model, and the injected Pi adapter cannot create a host.
   const config = loadConfig();
   adminPool = new Pool({ connectionString: config.databaseUrl, max: 1, connectionTimeoutMillis: 5_000 });
   await adminPool.query(`CREATE SCHEMA ${schema}`);
@@ -26,7 +29,22 @@ async function initialize(): Promise<void> {
   stateDir = await mkdtemp(join(tmpdir(), 'nexrun-e2e-'));
   if (stopping) return;
   pool = new Pool({ connectionString: config.databaseUrl, options: `-c search_path=${schema}`, max: 10, connectionTimeoutMillis: 5_000 });
-  app = await buildApp({ pool, config: { ...config, host: '127.0.0.1', port: 3001, agentMode: 'mock', stateDir } });
+  app = await buildApp({
+    pool,
+    config: { ...config, host: '127.0.0.1', port: 3001, agentMode: 'mock', responseLanguage: 'auto', adminToken: undefined, encryptionKey: randomBytes(32).toString('base64'), stateDir },
+    settingsEnvironment: { NEXRUN_OPENAI_API_KEY: 'e2e-env-key-placeholder-not-real' },
+    adapterFactory(settings) {
+      if (settings.adapter === 'mock') return createMockAdapter({ responseLanguage: settings.responseLanguage });
+      return {
+        mode: 'pi', configured: Boolean(settings.apiKey), model: settings.model,
+        async generate() { throw Object.assign(new Error('E2E_MODEL_CALL_BLOCKED'), { code: 'UPSTREAM_ERROR' }); },
+      };
+    },
+    async settingsChecker(settings) {
+      const code = !settings.apiKey ? 'AGENT_NOT_CONFIGURED' : settings.apiKey.includes('reject') ? 'UPSTREAM_AUTHENTICATION_FAILED' : 'CONNECTION_OK';
+      return { ok: code === 'CONNECTION_OK', code, checkedAt: new Date().toISOString(), revision: settings.revision };
+    },
+  });
   app.server.once('close', () => { if (!stopping) void shutdown(); });
   if (stopping) return;
   await app.listen({ host: '127.0.0.1', port: 3001 });
