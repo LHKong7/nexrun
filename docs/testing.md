@@ -15,7 +15,7 @@ npm run build
 
 `check` runs TypeScript, ESLint, the exact-release license gate, and the Node test suite. API and demo-data tests create temporary database schemas and remove them afterward. They never reset the development schema. `TEST_DATABASE_URL` selects their database independently of the application's `DATABASE_URL`.
 
-Local verification on 2026-11-04 passed all 65 Node tests, all ten browser scenarios, typecheck, lint, build, and the license gate for 552 exact locked artifacts. No remote CI or successful live provider run is claimed by these results.
+Local verification on 2026-11-04 passed all 65 Node tests, all thirteen browser scenarios, typecheck, lint, build, and the license gate for 552 exact locked artifacts. No remote CI or successful live provider run is claimed by these results.
 
 For browser tests, stop any manually started API and Web servers before running:
 
@@ -97,8 +97,10 @@ The host forwards only the current assistant message's public text events and ca
 | Pi output and host | Public-text filtering, canonical final text, stale/late events, real SDK event wiring with a synthetic stream, private resources, credential isolation, cancellation, timeout, crash reconciliation |
 | API | Atomic acceptance/outbox, idempotency, capacity, ownership, history pagination, SSE replay/resync, partial persistence, restart interruption |
 | Demo data | Atomic/repeatable imports, owner conflicts, user edit preservation, continuation, multi-page history and event reconstruction |
-| Browser | Context isolation and concise replies, offline/navigation/refresh recovery, Stop, send retry, failure recovery, rename/archive, Chinese mobile IME, Markdown/code copying, answer/UI language independence, pagination, input validation |
+| Browser | Context isolation and concise replies, offline/navigation/refresh recovery, Stop, send retry, failure recovery, rename/archive, Chinese mobile IME, Markdown/code copying and localized notifications, answer/UI language independence, pagination, input validation, language-menu keyboard controls, modal focus trapping and restoration |
 | Dependency gate | Lockfile changes, unreviewed or incompatible licenses, copied component source drift |
+
+The interface uses official shadcn Base UI primitives. The language tests interact with an accessible combobox/listbox rather than a native selection menu. Modal checks exercise the rename Dialog and archive AlertDialog, including initial focus, Tab containment, Escape/cancel, localized labels, and restored trigger focus. Keyboard tests wait for the actual focused option before the next key so asynchronous focus placement cannot hide a regression or select the previous option.
 
 ## Live Pi verification
 
