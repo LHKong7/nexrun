@@ -40868,3 +40868,87 @@ Changes: Added source attribution and changed cn import to local @/lib/utils; co
 apps/web/src/components/ui/textarea.tsx
 Source: https://ui.shadcn.com/r/styles/base-nova/textarea.json
 Changes: Added source attribution and changed cn import to local @/lib/utils; component remains based on official Base UI source.
+
+apps/web/src/components/ui/select.tsx
+Source: https://ui.shadcn.com/r/styles/base-nova/select.json
+Changes: Preserved official Base UI component structure; resolved cn/registry aliases to local imports and selected existing Lucide icons. Converted Tailwind 4 CSS-variable utility shorthand to equivalent Tailwind 3 arbitrary-value syntax and --spacing(4) to 1rem.
+
+apps/web/src/components/ui/dialog.tsx
+Source: https://ui.shadcn.com/r/styles/base-nova/dialog.json
+Changes: Preserved official Base UI component structure; resolved cn/registry aliases to local imports and selected existing Lucide icons. Converted Tailwind 4 CSS-variable utility shorthand to equivalent Tailwind 3 arbitrary-value syntax and --spacing(4) to 1rem. Added overridable closeLabel and closeButtonProps for localization and busy-state dismissal control; DialogFooter also accepts closeLabel.
+
+apps/web/src/components/ui/alert-dialog.tsx
+Source: https://ui.shadcn.com/r/styles/base-nova/alert-dialog.json
+Changes: Preserved official Base UI component structure; resolved cn/registry aliases to local imports and selected existing Lucide icons. Converted Tailwind 4 CSS-variable utility shorthand to equivalent Tailwind 3 arbitrary-value syntax and --spacing(4) to 1rem.
+
+apps/web/src/components/ui/card.tsx
+Source: https://ui.shadcn.com/r/styles/base-nova/card.json
+Changes: Preserved official Base UI component structure; resolved cn/registry aliases to local imports and selected existing Lucide icons. Converted Tailwind 4 CSS-variable utility shorthand to equivalent Tailwind 3 arbitrary-value syntax and --spacing(4) to 1rem.
+
+apps/web/src/components/ui/avatar.tsx
+Source: https://ui.shadcn.com/r/styles/base-nova/avatar.json
+Changes: Preserved official Base UI component structure; resolved cn/registry aliases to local imports and selected existing Lucide icons. Converted Tailwind 4 CSS-variable utility shorthand to equivalent Tailwind 3 arbitrary-value syntax and --spacing(4) to 1rem.
+
+apps/web/src/components/ui/badge.tsx
+Source: https://ui.shadcn.com/r/styles/base-nova/badge.json
+Changes: Preserved official Base UI component structure; resolved cn/registry aliases to local imports and selected existing Lucide icons. Converted Tailwind 4 CSS-variable utility shorthand to equivalent Tailwind 3 arbitrary-value syntax and --spacing(4) to 1rem.
+
+apps/web/src/components/ui/skeleton.tsx
+Source: https://ui.shadcn.com/r/styles/base-nova/skeleton.json
+Changes: Preserved official Base UI component structure; resolved cn/registry aliases to local imports and selected existing Lucide icons. Converted Tailwind 4 CSS-variable utility shorthand to equivalent Tailwind 3 arbitrary-value syntax and --spacing(4) to 1rem.
+
+apps/web/src/components/ui/separator.tsx
+Source: https://ui.shadcn.com/r/styles/base-nova/separator.json
+Changes: Preserved official Base UI component structure; resolved cn/registry aliases to local imports and selected existing Lucide icons. Converted Tailwind 4 CSS-variable utility shorthand to equivalent Tailwind 3 arbitrary-value syntax and --spacing(4) to 1rem.
+
+apps/web/src/components/ui/scroll-area.tsx
+Source: https://ui.shadcn.com/r/styles/base-nova/scroll-area.json
+Changes: Preserved official Base UI component structure; resolved cn/registry aliases to local imports and selected existing Lucide icons. Converted Tailwind 4 CSS-variable utility shorthand to equivalent Tailwind 3 arbitrary-value syntax and --spacing(4) to 1rem. Added typed viewportRef and viewportProps pass-through for message timeline scrolling.
+
+apps/web/src/components/ui/kbd.tsx
+Source: https://ui.shadcn.com/r/styles/base-nova/kbd.json
+Changes: Preserved official Base UI component structure; resolved cn/registry aliases to local imports and selected existing Lucide icons. Converted Tailwind 4 CSS-variable utility shorthand to equivalent Tailwind 3 arbitrary-value syntax and --spacing(4) to 1rem.
+
+apps/web/src/components/ui/toast.tsx
+Source: https://ui.shadcn.com/r/styles/base-nova/toast.json
+Changes: Preserved official Base UI component structure; resolved cn/registry aliases to local imports and selected existing Lucide icons. Converted Tailwind 4 CSS-variable utility shorthand to equivalent Tailwind 3 arbitrary-value syntax and --spacing(4) to 1rem. Threaded an overridable closeLabel through Toaster and ToastList to ToastClose. Added an overridable viewportLabel on Toaster for the notification region accessible name.
+
+apps/web/src/components/ui/tooltip.tsx
+Source: https://ui.shadcn.com/r/styles/base-nova/tooltip.json
+Changes: Preserved official Base UI component structure; resolved cn/registry aliases to local imports and selected existing Lucide icons. Converted Tailwind 4 CSS-variable utility shorthand to equivalent Tailwind 3 arbitrary-value syntax and --spacing(4) to 1rem.
+
+apps/web/src/components/ui/label.tsx
+Source: https://ui.shadcn.com/r/styles/base-nova/label.json
+Changes: Preserved official Base UI component structure; resolved cn/registry aliases to local imports and selected existing Lucide icons. Converted Tailwind 4 CSS-variable utility shorthand to equivalent Tailwind 3 arbitrary-value syntax and --spacing(4) to 1rem.
+
+apps/web/src/components/ui/table.tsx
+Source: https://ui.shadcn.com/r/styles/base-nova/table.json
+Changes: Preserved official Base UI component structure; resolved cn/registry aliases to local imports and selected existing Lucide icons. Converted Tailwind 4 CSS-variable utility shorthand to equivalent Tailwind 3 arbitrary-value syntax and --spacing(4) to 1rem.
+
+apps/web/src/components/ui/sidebar.tsx
+Source: https://ui.shadcn.com/r/styles/base-nova/sidebar.json
+Changes: Preserved official Base UI component structure; resolved cn/registry aliases to local imports and selected existing Lucide icons. Converted Tailwind 4 CSS-variable utility shorthand to equivalent Tailwind 3 arbitrary-value syntax and --spacing(4) to 1rem. Added mobileTitle/mobileDescription/closeLabel and SidebarTrigger label localization props.
+
+apps/web/src/components/ui/sheet.tsx
+Source: https://ui.shadcn.com/r/styles/base-nova/sheet.json
+Changes: Preserved official Base UI component structure; resolved cn/registry aliases to local imports and selected existing Lucide icons. Converted Tailwind 4 CSS-variable utility shorthand to equivalent Tailwind 3 arbitrary-value syntax and --spacing(4) to 1rem. Added overridable closeLabel and closeButtonProps for localization and busy-state dismissal control; DialogFooter also accepts closeLabel.
+
+apps/web/src/hooks/use-mobile.ts
+Source: https://ui.shadcn.com/r/styles/base-nova/use-mobile.json
+Changes: Preserved the official responsive hook without behavior changes; added source and license attribution.
+
+apps/web/src/components/ui/alert.tsx
+Source: https://ui.shadcn.com/r/styles/base-nova/alert.json
+Changes: Preserved official Base UI component structure; resolved cn/registry aliases to local imports and selected existing Lucide icons. Converted Tailwind 4 CSS-variable utility shorthand to equivalent Tailwind 3 arbitrary-value syntax and --spacing(4) to 1rem.
+
+apps/web/src/components/ui/checkbox.tsx
+Source: https://ui.shadcn.com/r/styles/base-nova/checkbox.json
+Changes: Preserved official Base UI component structure; resolved cn/registry aliases to local imports and selected existing Lucide icons. Converted Tailwind 4 CSS-variable utility shorthand to equivalent Tailwind 3 arbitrary-value syntax and --spacing(4) to 1rem.
+
+apps/web/src/components/ui/spinner.tsx
+Source: https://ui.shadcn.com/r/styles/base-nova/spinner.json
+Changes: Preserved official Base UI component structure; resolved cn/registry aliases to local imports and selected existing Lucide icons. Converted Tailwind 4 CSS-variable utility shorthand to equivalent Tailwind 3 arbitrary-value syntax and --spacing(4) to 1rem.
+
+apps/web/src/components/ui/empty.tsx
+Source: https://ui.shadcn.com/r/styles/base-nova/empty.json
+Changes: Preserved official Base UI component structure; resolved cn/registry aliases to local imports and selected existing Lucide icons. Converted Tailwind 4 CSS-variable utility shorthand to equivalent Tailwind 3 arbitrary-value syntax and --spacing(4) to 1rem.

@@ -4,9 +4,10 @@
   "rsc": false,
   "tsx": true,
   "tailwind": {
-    "css": "src/index.css",
+    "css": "src/styles.css",
     "baseColor": "neutral",
-    "cssVariables": true
+    "cssVariables": true,
+    "config": "tailwind.config.mjs"
   },
   "iconLibrary": "lucide",
   "aliases": {

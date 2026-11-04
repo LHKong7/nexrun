@@ -12,4 +12,6 @@ Vite 7, Tailwind 3, and Rollup 4.43 are intentionally pinned to avoid unapproved
 
 Application dependency scanning does not audit an entire operating system. The pinned PostgreSQL image is an upstream development/CI service, not a bundled NexRun application image. GitHub Actions and test browsers run as external development tools. Review their terms and the actual OS/image contents separately before a customer-hosted distribution. Chromium/Chrome and their third-party notices are not redistributed in the web bundle. No production container image is shipped by this sprint.
 
+The UI migration has 24 copied-source records: 23 UI components and one responsive hook. It uses existing reviewed npm dependencies, with no package or lockfile additions. New raw registry snapshots are retained in `shadcn-registry/`; records identify immutable upstream source and the installed modifications. Adaptations cover local imports/icons, Tailwind 3 syntax, localized dismissal labels, busy-state controls, and ScrollArea viewport access. Keep source fingerprints and notices synchronized whenever these copied files change.
+
 License checks and SBOMs support review; they do not replace applicable obligations or establish rights to a model service. OpenAI credentials stay server-side, and model access is verified separately from the Pi package license.
