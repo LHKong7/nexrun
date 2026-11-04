@@ -6,8 +6,7 @@ import type {
   AgentSession, CreateAgentSessionOptions, ExtensionRuntime, ResourceLoader, SessionManager,
 } from '@earendil-works/pi-coding-agent';
 import type { PiFailureDiagnostic, PiHostRequest } from './pi.js';
-
-const SYSTEM_PROMPT = 'You are a helpful text conversation assistant. You have no tools, filesystem access, shell, browser, extensions, or external actions. Respond to the user in their requested language.';
+import { PI_RESPONSE_SYSTEM_PROMPT, PiResponseCollector } from './pi-response.js';
 
 /** The host owns all resources; no default loader or filesystem discovery is used. */
 export function createTextOnlyResourceLoader(createRuntime: () => ExtensionRuntime): ResourceLoader {
@@ -18,7 +17,7 @@ export function createTextOnlyResourceLoader(createRuntime: () => ExtensionRunti
     getPrompts: () => ({ prompts: [], diagnostics: [] }),
     getThemes: () => ({ themes: [], diagnostics: [] }),
     getAgentsFiles: () => ({ agentsFiles: [] }),
-    getSystemPrompt: () => SYSTEM_PROMPT,
+    getSystemPrompt: () => PI_RESPONSE_SYSTEM_PROMPT,
     getSystemPromptSource: () => undefined,
     getAppendSystemPrompt: () => [],
     getAppendSystemPromptSources: () => [],
@@ -249,7 +248,6 @@ export function startPiHost(): void {
       await send({ type: 'done', runId: request.runId, status: 'cancelled' });
       return;
     }
-    let fullText = '';
     let failureCode: string | undefined;
     let failureDiagnostic: PiFailureDiagnostic | undefined;
     let lastEmission = 0;
@@ -259,18 +257,17 @@ export function startPiHost(): void {
       pendingEmission = undefined;
       if (!aborted && !finishing) {
         lastEmission = Date.now();
-        void send({ type: 'text', runId: request.runId, text: fullText });
+        void send({ type: 'text', runId: request.runId, text: collector.text });
       }
     };
+    const collector = new PiResponseCollector((text) => {
+      if (Buffer.byteLength(text) > 2_000_000) { failureCode = 'UPSTREAM_ERROR'; requestAbort(); return; }
+      if (Date.now() - lastEmission >= 30) emitText();
+      else pendingEmission ??= setTimeout(emitText, 30);
+    });
     const unsubscribe = session.subscribe((event) => {
-      if (event.type === 'message_update' && event.assistantMessageEvent.type === 'text_delta' && !aborted) {
-        fullText += event.assistantMessageEvent.delta;
-        if (Buffer.byteLength(fullText) > 2_000_000) { failureCode = 'UPSTREAM_ERROR'; requestAbort(); return; }
-        if (Date.now() - lastEmission >= 30) emitText();
-        else pendingEmission ??= setTimeout(emitText, 30);
-      } else if (event.type === 'message_end' && event.message.role === 'assistant') {
-        // The finalized message is authoritative and preserves exact whitespace.
-        fullText = event.message.content.filter((part) => part.type === 'text').map((part) => part.text).join('');
+      const collected = !aborted && collector.consume(event);
+      if (collected && event.type === 'message_end' && event.message.role === 'assistant') {
         if (event.message.stopReason === 'error') {
           failureCode = classifyPiError({ message: event.message.errorMessage });
           failureDiagnostic = classifyPiDiagnostic({ message: event.message.errorMessage });
@@ -284,8 +281,10 @@ export function startPiHost(): void {
     try {
       // Slash commands, skills, templates and extension input expansion stay disabled for all text.
       await session.prompt(request.prompt, { expandPromptTemplates: false });
+      clearTimeout(pendingEmission);
+      pendingEmission = undefined;
       if (failureCode) throw codedError(failureCode, failureDiagnostic);
-      if (!aborted) await send({ type: 'text', runId: request.runId, text: fullText });
+      if (!aborted) await send({ type: 'text', runId: request.runId, text: collector.text });
       manifest.state = aborted ? 'cancelled' : 'completed';
       await chmod(sessionFile, 0o600);
       await saveManifest(manifestPath, manifest);
@@ -294,7 +293,9 @@ export function startPiHost(): void {
         id: manifest.nativeSessionId, file: manifest.nativeSessionFile, version: manifest.nativeSessionVersion, sdkVersion: manifest.sdkVersion,
       } });
     } catch (error) {
-      if (!aborted && fullText) await send({ type: 'text', runId: request.runId, text: fullText });
+      clearTimeout(pendingEmission);
+      pendingEmission = undefined;
+      if (!aborted && collector.text) await send({ type: 'text', runId: request.runId, text: collector.text });
       manifest.state = aborted ? 'cancelled' : 'failed';
       await saveManifest(manifestPath, manifest);
       if (aborted && !failureCode) {
