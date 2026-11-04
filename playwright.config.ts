@@ -15,7 +15,7 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   webServer: [
-    { command: 'node --env-file-if-exists=.env --import tsx apps/api/test/e2e-server.ts', url: 'http://127.0.0.1:3001/healthz', timeout: 60_000, reuseExistingServer: false, env: { AGENT_MODE: 'mock' } },
+    { command: 'node --env-file-if-exists=.env --import tsx apps/api/test/e2e-server.ts', url: 'http://127.0.0.1:3001/healthz', timeout: 60_000, gracefulShutdown: { signal: 'SIGTERM', timeout: 10_000 }, reuseExistingServer: false, env: { AGENT_MODE: 'mock' } },
     { command: 'npm run dev --workspace @nexrun/web', url: 'http://127.0.0.1:5173', timeout: 60_000, reuseExistingServer: false },
   ],
 });
