@@ -1,213 +1,309 @@
 # NexRun Architecture
 
-Status: Proposed architecture; implementation pending  
-Updated: 2026-11-04  
+Status: Proposed target architecture; implementation pending
+
+Updated: 2026-11-04
+
 Language: English
 
 [Simplified Chinese version](architecture.zh-CN.md)
 
-NexRun is a cloud application for operating multiple CLI Agents through a browser. Users connect a repository, create an isolated workspace, select an Agent, run tasks, review changes, and approve sensitive actions. Execution continues independently of the browser connection.
+NexRun is a chat-first cloud application for operating coding Agents. Version one uses Pi Agent as its primary and only deeply integrated Agent runtime. Users see a chat list and a chat detail page. Direct chat is the initial delivery; group chats and bounded Agent Team execution belong to later releases.
 
-The architecture combines thin clients, a persistent control plane, and disposable cloud sandboxes. Existing CLI Agents keep their native reasoning loops and context management inside the execution environment. The control plane owns identity, task lifecycle, scheduling, permissions, event history, recovery coordination, and platform resource accounting.
+The architecture combines thin clients, a persistent control plane, and disposable cloud sandboxes. Each Pi runtime keeps its native reasoning loop and context inside the execution environment. NexRun owns conversation access, message routing, team coordination, durable tasks, authorization, event history, and recovery. A team Leader is also a sandboxed Pi Agent; the control-plane coordinator is a deterministic service, not another unrestricted reasoning loop.
 
-Commercial dependency admission and language conventions are governed by [AGENTS.md](../AGENTS.md). Technology choices below are candidates until exact versions, dependencies, distribution obligations, and applicable service terms pass that policy.
+Commercial dependency admission and language conventions are governed by [AGENTS.md](../AGENTS.md). All package versions, transitive dependencies, images, extensions, and service terms must pass that policy before adoption.
+
+## Current delivery scope
+
+[Sprint 1](sprints/sprint1.md) defines the current implementation commitment: React with shadcn/ui, a Node.js service, persisted direct chats, streaming, and one tool-disabled Pi Agent integration alongside a deterministic mock. Agent Teams and group chats are deferred. The sprint does not require executable tools, cloud sandbox infrastructure, Temporal, Valkey, or object storage.
+
+The group, team, and sandbox sections below describe the target architecture for later releases. They are not Sprint 1 acceptance criteria. Text-only development uses a supervised host with tools/resources disabled; add the stronger execution boundary before enabling repository code or tools.
 
 ## Goals and scope
 
-The first release should provide a reliable remote development workflow across more than one CLI Agent, with English and Simplified Chinese interfaces. It must preserve project files, make execution observable, recover browser connections, and enforce permissions at actual execution boundaries.
+The initial release provides a reliable English and Simplified Chinese direct-chat product backed by Pi. Later group/team releases add membership, explicit Agent addressing, and a predefined Leader, Builder, and Reviewer team. In that later model, a single user can create a group containing several Agents, and other authorized humans can join it.
 
-The initial product does not build a replacement Agent reasoning engine. Automatic cross-provider orchestration, custom prompt-cache management, desktop video streaming, autonomous skill creation, and model fine-tuning are later extensions.
+A **group** is a shared Conversation with members and an access policy. An **Agent Team** is a versioned role and delegation configuration. A **team Run** is one execution of that configuration for a user goal. These are distinct objects: creating a group neither starts a team nor grants it credentials. Sidebar folders and labels, if added, are presentation features rather than security groups.
 
-Three independent integration concepts keep the system extensible:
-
-- An **Agent Adapter** controls a specific CLI or SDK and translates its events.
-- A **Sandbox Provider** provisions and manages the execution environment.
-- A **model service configuration** describes the Agent's supported inference connection and authentication. It does not assume that every Agent accepts interchangeable model providers.
+The first release excludes Agent Teams, group chats, multiple CLI integrations, a full IDE, executable tools, free-form Agent debate, recursive delegation, desktop streaming, automatic skill installation, and model fine-tuning. Future Agent Adapters remain an extension boundary, not an MVP delivery requirement.
 
 ## System boundaries
 
 ```mermaid
 flowchart TB
-    Client["Thin client\nWeb and PWA"]
-    API["Control API\nIdentity, projects, sessions, approvals"]
-    Workflow["Durable workflow worker\nScheduling, lifecycle, recovery"]
-    DB[("PostgreSQL\nApplication state and event history")]
+    Client["Thin client\nChat list and chat detail"]
+    API["Control API\nConversations, members, messages, approvals"]
+    Router["Message router\nExplicit recipients and execution intent"]
+    Coordinator["Team coordinator\nPlan versions, tasks, budgets, leases"]
+    Workflow["Durable workflow worker\nDispatch, waits, recovery, integration"]
+    DB[("PostgreSQL\nMessages, task graph, events, outbox")]
     Objects[("Object storage\nCheckpoints and artifacts")]
-    Policy["Policy and credential services\nAuthorization and operation broker"]
-    Provider["Sandbox Provider\nManaged sandbox or Firecracker pool"]
-    Runner["Sandbox Runner\nProcess supervision and event collection"]
-    Adapter["Agent Adapters\nCodex, Claude Code, Gemini CLI, PTY"]
-    Workspace["Isolated workspace\nFiles, toolchains, native Agent state"]
+    Policy["Policy and credential services\nScoped authorization and operation broker"]
+    Provider["Sandbox Provider\nManaged sandbox first, Firecracker later"]
+    Runner["Sandbox Runner\nSupervised Agent host processes"]
+    Pi["Pi SDK hosts\nIndependent Leader and worker sessions"]
+    Workspace["Isolated task workspaces\nBranches, toolchains, native Pi state"]
 
-    Client <-->|HTTPS, SSE, WebSocket| API
+    Client <-->|HTTPS and SSE| API
     API --> DB
-    API --> Workflow
+    API --> Router
+    Router --> Coordinator
+    Coordinator --> Workflow
+    Coordinator --> DB
     Workflow --> Provider
     Provider --> Runner
-    Runner --> Adapter
-    Adapter --> Workspace
-    Runner -->|Authenticated events| API
-    Runner -->|Scoped authorization requests| Policy
-    Runner -->|Scoped checkpoint upload| Objects
+    Runner --> Pi
+    Pi --> Workspace
+    Pi -->|Validated team tool requests| Coordinator
+    Runner -->|Scoped policy requests| Policy
+    Runner -->|Events and checkpoints| API
     API --> Objects
 ```
 
 ### Thin client
 
-The browser renders conversations, execution activity, approvals, diffs, terminals, previews, and artifacts. It may keep an optimistic view and a local cache, but server state remains authoritative. Closing a tab does not stop an accepted task.
+The browser renders chat history, group membership, Agent identities, execution cards, approvals, and expandable details. Server state is authoritative; a local optimistic message is marked pending until durable acceptance. Closing the browser does not stop an accepted Run.
 
-The client never holds cloud infrastructure administration credentials or unrestricted database access. Translation resources and presentation logic belong in the client; authorization decisions do not.
+Use SSE for authorized conversation updates. Terminal WebSockets, diffs, files, previews, and artifacts are optional detail surfaces opened from the chat, not permanent top-level panels. The browser holds no infrastructure administration credentials or unrestricted database access.
 
 ### Control plane
 
-The control plane owns organizations, membership, project configuration, session metadata, execution commands, policy decisions, event persistence, and resource limits. Its API and workflow workers are separately deployable processes sharing well-defined application modules.
+Use a modular monolith with API and workflow worker processes. Its conversation module enforces membership, its message router resolves recipients, and its team coordinator validates and persists proposed plans. The coordinator schedules through one durable workflow system; it does not trust an Agent to mutate task tables directly.
 
-Start with a modular monolith rather than many independently deployed services. Preserve module boundaries for identity, workspaces, sessions, execution, approvals, credentials, and billing so they can be separated when load or isolation requirements justify it.
+The Leader proposes a plan through controlled tools. Authorization, dependency validation, budget reservation, execution state, and cancellation belong to the platform. The Leader cannot approve its own requests or expand the initiating user's authority.
 
 ### Execution plane
 
-CLI Agents, repository scripts, build tools, and optional browsers run inside cloud sandboxes. A Runner starts processes, supervises their lifecycle, implements Adapter transports, and reports events. Its credentials authorize only the assigned workspace and execution attempt.
+A Runner supervises a dedicated Node.js Agent host process for each active Pi session inside a sandbox. Use the Pi SDK in those hosts to configure resources and tools. Do not import repository-controlled extensions into the API process. Independent processes help lifecycle isolation; separate sandboxes and filesystem/network controls enforce the actual tenant and workspace boundaries.
 
-The Runner and repository contents are not trusted to authorize operations or write arbitrary control-plane state. An authenticated event establishes its source, not the truth of every assertion inside it. The platform derives task state through validated protocol transitions.
+The Runner can report scoped execution events and issue authorized team-tool requests. These requests remain untrusted proposals and must be validated against the current Run, attempt, role, and plan version.
 
 ## Product model and workspace ownership
 
 | Entity | Responsibility |
 | --- | --- |
-| Organization | Tenant boundary, membership, roles, quotas, and policies |
-| Project | Repository connection and shared project configuration |
-| Workspace | Durable working copy, branch, environment specification, and access boundary |
-| Session | Persistent conversation with one configured Agent |
-| Run | One requested execution within a Session |
-| Execution attempt | A concrete dispatch of a Run to a Runner, with a lease and fencing token |
-| Agent Profile | Agent type, version, model settings, tools, and permission configuration |
-| Approval | Authorization for an exact operation under a defined scope and expiry |
-| Checkpoint | A versioned record of recoverable workspace and Agent state |
-| Artifact | A produced file, patch, report, or other retained output |
+| Organization | Tenant boundary, membership, policies, and quotas |
+| Project | Optional repository connection, environment defaults, and project access policy |
+| Conversation | A direct or group chat; communication history and membership boundary |
+| ConversationMember | A human or conversation-local Agent participant with stable ID and scoped permissions |
+| Message | A conversation entry with author, explicit recipients, reply target, and execution intent |
+| AgentProfile | A reusable recipe for Pi model settings, role prompt, tool policy, and resources |
+| AgentInstance | A conversation-local Agent identity, instantiated from a profile |
+| AgentTeamDefinition | A versioned template of roles, allowed delegation, and limits |
+| TeamBinding | An instantiated team assigned to a Conversation, with concrete AgentInstances |
+| Run | A durable user goal with mode `single` or `team`; a team Run snapshots its TeamBinding |
+| Task | A versioned work, coordination, or integration unit within a Run, with dependencies, executor, and result contract |
+| AgentSession | Native Pi conversation/context for one AgentInstance and its permitted execution scope |
+| ExecutionAttempt | One leased dispatch of a Task to a Runner, with fencing token and native turn mapping |
+| Workspace | Durable working copy and environment, optionally derived from a Project for a Task |
+| Approval | Scoped human authorization for an exact operation |
+| Checkpoint and Artifact | Recoverable state and retained, versioned outputs |
 
-A Session can contain many Runs. Runs in one Session execute serially by default. Workspace mutation also requires an exclusive lease, including writes from terminals and auxiliary tools. A second Session must wait or receive a separate working copy.
+A Conversation is not a Pi session. One group may contain several independent AgentSessions, and a native Pi transcript is not the shared chat log. A Run is a platform user goal, not a synonym for a single native Agent turn. `TeamRun` denotes `Run.mode = team`; it does not introduce a second competing execution record.
 
-Parallel development uses independent branches and working copies, normally separate sandboxes. Git worktrees may simplify trusted development within one environment, but they share repository metadata and are not a tenant security boundary. Combine results through a deliberate merge, commit, or pull request flow.
+Direct chats can reuse an AgentSession across serial Runs when authorization, Agent identity, Workspace, and context scope remain unchanged. A team Leader uses a Run-scoped session; each delegated worker Task starts with a separate session and explicit task packet. An attempt can resume that Task's native session only after reconciliation. Never share native sessions across Conversations or concurrently prompt the same session.
 
-A Workspace outlives its sandbox. Repository URLs and branch names are not sufficient recovery state: uncommitted changes, untracked files, selected Agent session files, and checkpoint manifests must be retained according to project policy.
+An AgentProfile is a recipe, not a global context or credential container. Instantiating the same profile in two groups creates independent AgentInstances. Snapshot the team definition, profiles, repository base revision, and policy version for each Run; editing a template changes future Runs unless an explicit revision is accepted.
 
-## User experience
+Projects are optional when starting a discussion. Execution that needs source files must bind to a Project and authorized Workspace. A group may discuss several projects, but the first repository-enabled release binds each Run to at most one repository; it does not silently combine filesystem or credential scopes.
 
-The desktop workspace uses three main areas:
+Workspace mutation requires an exclusive lease, including terminal and auxiliary-tool writes. Concurrent writing Tasks receive independent working copies and normally separate sandboxes. Git worktrees share repository metadata and are not a tenant boundary. Workspace checkpoints include relevant uncommitted and untracked files, not just a repository URL and branch.
 
-| Area | Contents |
+## Chat list and chat detail
+
+The first client has two primary screens. On desktop they can appear as adjacent panes; on mobile they become list and detail routes.
+
+| Surface | Contents |
 | --- | --- |
-| Navigation | Projects, workspaces, sessions, and task status |
-| Conversation | User requests, Agent messages, execution activity, and approval cards |
-| Inspection | Diff, files, terminal, application preview, and artifacts |
+| Chat list | Direct/group icon, title, members or team badge, last visible message, unread count, and active/waiting/failed Run indicator |
+| Chat header | Conversation name, member management, bound team, current Run, optional project/branch, and scoped controls |
+| Timeline | Human and Agent messages, a team plan card, Task status cards, approval/input cards, final summaries, and artifact references |
+| Composer | Message, reply/recipient selector, stable-ID mentions, attachments, and explicit execution action |
+| Expandable detail | Task graph, individual activity, Diff, files, terminal, usage, and application preview when needed |
 
-The workspace header identifies the Agent, branch, environment, execution state, and available usage information. Missing provider usage data is shown as unavailable rather than zero.
+Keep the main timeline readable: one user goal creates one team execution card, with worker activity nested under it. Attribute visible results to the actual Agent role. The Leader normally posts the consolidated reply; worker results can be expanded without flooding the group with every tool delta. Do not expose hidden model reasoning as a team transcript.
 
-The initial mobile experience emphasizes progress, replies, and approvals. Full terminal and complex code review interactions can remain desktop-focused.
+Store each human member's last-read conversation sequence on the server. Unread state and notifications count visible events, not every internal tool event. Missing usage data is unavailable, not zero.
 
-The primary flow is:
+The main flow is: create a direct chat or group, add Agent members or bind a team, select a repository when needed, send an addressed request, follow the execution card, approve authorized actions, and review the integrated result. Creating a group or adding a team does not allocate a permanently running VM.
 
-1. Connect a repository and choose an environment template.
-2. Create a Workspace and select an Agent Profile.
-3. Submit a task and receive confirmation after durable acceptance.
-4. Follow activity, inspect changes, and answer supported approval or input requests.
-5. Review the result, validation output, and artifacts.
-6. Return later to the same Workspace and Session.
+## Groups and message routing
 
-## Agent Adapter design
+### Membership and authority
 
-Use official structured interfaces where available, structured headless output next, and a PTY terminal as the compatibility fallback.
+A group can contain one or more humans and multiple AgentInstances from the same tenant. Conversation membership grants access to its shared messages, not automatic access to every project or secret. When group support ships, new human members receive the shared history; the invitation flow must make that disclosure clear. Private direct-chat history and personal Agent memory are never imported automatically.
 
-| Integration level | Interface | Expected experience |
-| --- | --- | --- |
-| Structured control | Official bidirectional protocol or SDK | Rich lifecycle, messages, supported approvals, and native session controls |
-| Structured output | JSON or JSONL from a headless CLI | Task results and supported execution events; control capabilities vary |
-| Terminal | PTY byte stream | Interactive terminal access with limited structured interpretation |
+| Permission | Default authority |
+| --- | --- |
+| Read/post shared messages | Active authorized human members |
+| Add/remove members or bind/edit a team | Conversation owner or an explicitly authorized administrator |
+| Start/steer a Run or revise its plan | Authorized operator with access to the selected project and credentials |
+| Cancel a Task or team Run | Run initiator or authorized operator/administrator |
+| Approve sensitive operations | A currently authorized human approver for that resource |
+| Propose work or publish a scoped result | Assigned Agent role through validated platform tools |
 
-Candidate integrations are Codex App Server, Claude Code Agent SDK or structured CLI output, and Gemini CLI headless output. These interfaces are documented by their respective providers: [Codex App Server](https://developers.openai.com/codex/app-server/), [Claude Code programmatic execution](https://code.claude.com/docs/en/headless), and [Gemini CLI headless mode](https://geminicli.com/docs/cli/headless/).
+Membership roles and project roles must both permit the action. Each Run records the initiating human, authorization scope, credential source, and cost owner. Agents cannot inherit the union of all group members' privileges, use personal keys merely because their owner joined, or approve on behalf of a human.
 
-Each Adapter publishes capabilities for its pinned CLI version and configured mode:
+On member removal or permission reduction, terminate that member's live subscriptions, terminal access, and short-lived links where revocation is supported. Pause Runs whose authority was revoked, invalidate affected approvals, and reauthorize before further dispatch. Rebuild affected Agent context under a new context epoch instead of assuming that deleting a chat message erases native model history or an already completed external effect.
 
-```ts
-interface AgentCapabilities {
-  structuredEvents: boolean;
-  resumeSession: boolean;
-  steerActiveRun: boolean;
-  interruptRun: boolean;
-  toolApproval: boolean;
-  usageReporting: boolean;
-}
-```
+### Deterministic recipient routing
 
-The shared lifecycle covers capability discovery, session creation, task submission, event subscription, and cleanup. Resume, steering, interruption, and approval responses are optional operations guarded by capabilities. Terminal control remains a separate interface.
+Persist the Message first. The client sends resolved participant/team IDs alongside display mentions; the server verifies those references and records the final routing decision. Resolve handles only inside the current Conversation. Reply recipients are displayed before submission, not inferred invisibly from ambiguous text.
 
-An Adapter maps platform IDs to native session, turn, request, and tool IDs. Persist these mappings with the Agent version and environment specification. Preserve provider-specific details through versioned extensions instead of forcing every event into an inaccurate common abstraction.
+| Input | Default routing |
+| --- | --- |
+| Direct-chat message | Address the chat's Agent; queue or explicitly steer if busy |
+| Ordinary group message without an execution recipient | Save as shared conversation; no model invocation |
+| Explicit `@agent` or selected reply recipient | Address that Agent only, within its configured authority |
+| Explicit `@team` or Run Team action | Create a team Run and activate its Leader |
+| Several Agent mentions | Route only to the explicitly selected Agent IDs as separate single Runs; use a team recipient for coordinated work |
+| Agent output containing mentions | Display text only; no automatic recursive activation |
+| Scoped delegate/result command | Validate and advance the existing Run through the coordinator |
 
-Pin Agent versions, explicitly configure enabled tools and plugins, and run Adapter contract tests before upgrades. Treat repository-provided hooks and Agent configuration as executable input subject to workspace trust policy. Do not automatically load host configuration into a new sandbox.
+Default groups to `mention_only`. The composer can retain an explicit recipient such as Team, but it must show that recipient so a plain text body never secretly broadcasts work to all Agents. Message acceptance and Run acceptance have separate statuses.
 
-### Steering and interruption
+### Context and visibility
 
-Expose three distinct actions where supported:
+Build an immutable task packet from authorized material: goal, bounded conversation context through a recorded sequence, repository/base commit, files or artifact references, dependencies, acceptance criteria, role policy, and plan version. Shared history is data, not a source of platform authority. Do not replay the full group log as if it were each worker's native chat.
 
-- **Steer** adds input to the active execution using a native mechanism.
-- **Queue next instruction** waits until the active Run finishes.
-- **Interrupt** requests cancellation and reports the actual outcome.
+Leader context, worker context, shared timeline, and detailed execution events are separate views. A shared Conversation does not override project access: either restrict the Conversation audience to authorized project readers or withhold project-derived outputs and artifact links from the shared timeline. Public group events have their own sequence. Restricted Task events and native transcripts use independently authorized streams; never send them to a browser merely to hide them in the UI. Published summaries and attachments must respect source access and conversation visibility.
 
-Codex documents separate steering and interruption operations. Other Agents may differ. Do not emulate a safe mid-run redirect by silently killing a process. Cancelling a Run cannot undo an already completed external operation.
+## Agent Teams and task execution
 
-### Approval capability
+### Initial team model
 
-Displaying a tool event does not prove that the platform can stop the tool before execution. Set `toolApproval` only when the configured integration offers an enforceable pre-execution decision path. PTY output parsing alone cannot provide that guarantee.
+Ship a small configurable template with a Leader, Builder, and Reviewer. All use Pi, but can have different supported models, tools, prompts, and budgets. Read-only planning/review and writable building are separate policies. Role names do not themselves grant filesystem or network permissions.
+
+The Leader decomposes the goal and proposes Tasks. The Builder produces a versioned change. The Reviewer checks the exact submitted revision and reports findings. The coordinator schedules and integrates; it never treats a model's statement that work is complete as a database state transition. Reviewers receive read-only source access with separate permitted scratch space for checks when needed.
+
+Independent Tasks may run in parallel, with at most two worker Tasks active per team Run as an initial configurable limit. One role can have separate bounded instances, each with independent state. In the initial team implementation, only the Leader delegates; worker-to-worker spawning, unbounded membership changes, and recursive delegation are disabled.
+
+### Controlled team tools and task graph
+
+The following names describe NexRun tools, not built-in Pi team APIs:
+
+| Tool | Role and effect |
+| --- | --- |
+| `team.propose_plan` | Leader proposes a versioned acyclic task graph with goals, dependencies, owners, and acceptance criteria |
+| `team.delegate` | Leader requests dispatch of a ready Task; coordinator checks scope, dependencies, and reserved budget |
+| `team.get_status` | An authorized participant reads scoped persisted execution state |
+| `team.submit_result` | Worker submits a summary, result revision/artifact references, and validation evidence |
+| `team.request_input` | A participant requests a user decision or clarification without granting itself permission |
+| `team.publish_summary` | Leader proposes the consolidated user-facing result for platform publication |
+
+Implement these through approved custom tools in the Pi host. Each request carries a stable command ID, Run/Task/attempt identity, plan version, and authorization scope. Agents do not write task tables or create child processes on the control host. The platform validates the graph, enforces task limits and allowed recipients, and persists changes transactionally.
+
+Store a DAG of Tasks with explicit states such as `blocked`, `ready`, `running`, `waiting_for_approval`, `submitted`, `accepted`, `failed`, `cancelled`, and `reconciliation_required`. A submitted result is not automatically accepted. Dependent Tasks become ready only when required results and their contracts are accepted by policy or an authorized reviewer.
+
+A normal flow is: user goal -> Leader plan -> validated DAG -> ready workers -> versioned results -> review -> serialized integration and validation -> final summary. The coordinator creates bounded internal `coordination` Tasks for initial Leader planning and subsequent continuations, and `integration` Tasks for applying results. These exist outside the Leader-proposed work graph and have normal attempt identities, leases, cancellation, and budgets; the first Leader therefore has a valid Task/attempt before proposing a plan. Agents cannot create or redefine these platform-owned Tasks. Persist every transition; Leader context is not the scheduler's source of truth. Delegation returns a durable Task reference instead of blocking a tool call until all workers finish. On accepted results, the workflow resumes the Leader with a deduplicated notification; waiting work does not occupy a model turn or a worker slot.
+
+### Budgets and bounded coordination
+
+Reserve concurrency and resource budget before dispatch. The Run budget covers Leader turns, worker Tasks, retries, and integration. As initial configurable limits, allow at most eight work Tasks, eight Leader coordination turns, two concurrent workers, no recursive delegation, and two review-driven repair cycles; exceeding a limit requires an authorized explicit extension rather than silent looping.
+
+Tasks waiting for dependencies do not acquire a worker slot. For approval/input waits, distinguish model-turn scheduling slots, live sandbox resources, and the exclusive Workspace lease: only release a model slot once the host has safely yielded and no tool remains active. Keep resource accounting and the writer lease while a process can still write, or quiesce, checkpoint, and stop that execution before releasing them. Never admit a second writer while the original can resume. Revalidate authority, leases, and budget before continuation. If reliable model accounting is unavailable, label estimates and enforce dispatch count, runtime, sandbox resources, and retry limits; do not claim an exact hard token cap from incomplete provider statistics.
+
+### Workspaces and integration
+
+Every writing Task starts from an explicit base commit in an isolated working copy. Handoffs reference immutable commits or artifacts and declared dependencies. A Reviewer mounts or restores the submitted revision, not a mutable branch that another worker can change underneath it.
+
+Use one integration Workspace with an exclusive write lease. Apply accepted changes in dependency order, resolve conflicts explicitly, and run the selected verification there. Review results are bound to revision hashes; material changes invalidate the applicable review. Task completion, successful integration, and permission to push or publish are distinct outcomes.
+
+If integration fails, keep submitted artifacts and publish the actual blocker. The Leader may propose a bounded repair Task; it cannot mark the team successful by summarizing an unresolved merge conflict. Without a repository, a team may finish by delivering accepted artifacts instead of a code merge.
+
+### Steering and cancellation
+
+Expose separate actions for chat messages, steering the Leader, cancelling one Task, and stopping the team Run. A material goal change creates a new plan revision. The initial team implementation conservatively freezes dispatch and supersedes all unfinished Tasks (work, coordination, and integration) from the old revision, invalidating their unused approvals and reconciling running attempts before replacement. Previously accepted immutable results may be referenced only after explicit contract and authorization revalidation. This rule makes plan-version checks unambiguous; selective continuation of unchanged in-flight Tasks is a later optimization. Do not overwrite an already dispatched contract silently.
+
+Stopping a team first prevents new dispatch, then propagates cancellation, revokes unused authority, reconciles running attempts, and reports each Task's actual outcome. Late results from cancelled or superseded attempts are retained only for audit and cannot reactivate dependencies. Cancellation cannot roll back completed external side effects.
+
+## Pi runtime and future Agent Adapters
+
+### Pi as the version one runtime
+
+Pi here means the upstream coding Agent now hosted at `earendil-works/pi`, formerly `badlogic/pi-mono`. Its current main-project license is MIT; package releases and all bundled/transitive components remain subject to exact-version review. See [Pi source](https://github.com/earendil-works/pi) and [license](https://github.com/earendil-works/pi/blob/main/LICENSE).
+
+Use the Pi TypeScript SDK in a supervised sandbox Agent host. The SDK provides native session and resource integration; the platform supplies explicit working directories, approved resources, and a durable session store. See [Pi SDK](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/sdk.md). Do not use an in-memory session manager for Runs that promise native continuation.
+
+Pi's documentation presents sub-agent behavior as an extension rather than a built-in team product. NexRun owns the team graph and scheduler. See [Pi coding Agent overview](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/README.md).
+
+### Runtime integration contract
+
+| Platform need | Integration design |
+| --- | --- |
+| Streaming and completion | Subscribe before submission; map message/tool events and reconcile final status rather than treating prompt acceptance as completion |
+| Persistent context | Keep native Pi session files and active-branch references separate from shared chat messages |
+| Busy Agent input | Expose explicit steering or follow-up behavior; never concurrently prompt the same native session |
+| Controlled tools | Install reviewed platform tools and pre-execution checks; retain OS and network enforcement |
+| Cleanup | Supervise cancellation/disposal and record unexpected process loss |
+| Recovery | Reconcile command registry and side effects before native continuation |
+
+Pi's native session format is JSONL with branching entries; do not reconstruct it by assigning the shared group history to an in-memory message array. See [Pi session format](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/session-format.md).
+
+For versions exposing the documented event lifecycle, `agent_end` is not necessarily final when automatic work remains. Use the documented settled state and inspect failures/abort status. Test this against the pinned release. See [Pi event stream](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/json.md).
+
+A reviewed extension/custom-tool boundary can provide pre-execution decisions, but extensions execute with the host's permissions. Disable unreviewed discovery and package installation; do not treat an extension hook as a sandbox. See [Pi extensions](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/extensions.md).
+
+### RPC and later providers
+
+RPC is an optional subprocess transport, not a second MVP integration project. If used, split protocol records strictly on LF, correlate response IDs, drain stdout continuously, and keep diagnostics on stderr. See [Pi RPC](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/rpc.md).
+
+Keep a small Adapter capability contract for structured events, native continuation, steering, interruption, enforceable tool approval, and usage reporting. Codex, Claude Code, Gemini CLI, and PTY compatibility can be added later without changing Conversation or Team identity. Do not require those integrations to ship the Pi-first MVP.
 
 ## Commands and events
 
-Use explicit command APIs and a versioned event envelope rather than a single presentation function as the entire product protocol.
+Use explicit APIs for Conversations, membership, Messages, team bindings, Runs, Tasks, and Approvals. A human Message, a requested Run, and a native Pi turn have different identifiers and acknowledgement states.
 
 | Channel | Purpose |
 | --- | --- |
-| HTTPS commands | Create workspaces, submit Runs, request cancellation, and decide approvals |
-| SSE | Stream persisted conversation and execution events with reconnect support |
-| WebSocket | Carry terminal input, output, and resize interactions |
-| Private Runner connection | Authenticated dispatch, heartbeats, acknowledgements, and event ingestion |
-| Preview gateway | Authorized access to selected sandbox application ports |
+| HTTPS commands | Manage chats, post addressed messages, start/revise/cancel work, and decide approvals |
+| Conversation SSE | Replay authorized shared messages and sanitized execution cards |
+| Task event SSE | Authorized detailed execution activity with an independent cursor |
+| Optional WebSocket | Interactive terminal input, output, and resize |
+| Private Runner transport | Authenticated dispatch, heartbeats, command responses, and event ingestion |
+| Optional preview gateway | Authorized access to selected sandbox application ports |
 
-A persisted event includes:
+A shared conversation event includes:
 
 ```json
 {
   "schemaVersion": 1,
   "eventId": "evt_example",
-  "sessionId": "ses_example",
+  "conversationId": "conv_example",
   "runId": "run_example",
+  "taskId": "task_example",
+  "agentInstanceId": "agent_example",
   "attemptId": "attempt_example",
+  "planVersion": 1,
   "sequence": 42,
-  "type": "message.delta",
-  "occurredAt": "2026-11-03T00:00:00Z",
-  "payload": { "text": "Inspecting the failing test." }
+  "type": "task.status_changed",
+  "occurredAt": "2026-11-04T00:00:00Z",
+  "payload": { "status": "running" }
 }
 ```
 
-The server assigns a monotonically increasing sequence within a Session. Clients deduplicate by event ID and resume from a server-issued cursor. Large output is stored as an artifact rather than embedded indefinitely in the event log. Batch text deltas to reduce write overhead without hiding lifecycle transitions.
+The server assigns monotonically increasing shared Conversation sequences. Clients deduplicate event IDs and use per-stream cursors. Restricted Task logs and native sessions are not embedded in this shared stream. Store large outputs as authorized artifacts and batch text deltas without hiding lifecycle transitions.
 
-Bound stream buffers and disconnect slow consumers with a resumable cursor instead of exhausting server memory. Define event and terminal retention separately. If a cursor has expired, return an explicit resynchronization response with the current Session state and available history; never silently imply that missing output was replayed.
+Bound stream buffers and disconnect slow consumers with a resumable cursor. Define retention separately for messages, detailed events, terminal output, and native sessions. Expired cursors return an explicit resynchronization response with current visible state and available history; missing events are never silently presented as replayed.
 
-Accept user commands transactionally with an idempotency key and a durable dispatch record. An outbox dispatcher starts or signals the workflow using stable identifiers. If dispatch is retried, it must not create a second logical Run. Persist accepted events before notifying clients; notification failure is recovered through replay.
+Accept commands with an idempotency key and durable outbox record. Use a unique dispatch key for each Run/Task/plan revision and a unique active attempt lease. Duplicate callbacks and team-tool requests cannot create duplicate Tasks or replies. Persist accepted events before notification; recover notifications through replay.
 
-Validate all object references against the authenticated tenant. Derive tenant identity from authorization context rather than trusting an organization ID supplied by a browser or Runner.
+Authorize every route and stream using active tenant, Conversation, project, Task, and resource permissions. Derive identity from authentication, not claimed IDs. Only an authorized publication path can turn detailed Agent events into group-visible messages.
 
 ## Durable execution and recovery
 
-Temporal coordinates platform steps such as allocating a sandbox, attaching a workspace, dispatching a Run, waiting for execution status, handling approvals, and retiring resources. Keep token streams and large outputs outside workflow history; store references and lifecycle transitions there.
+Temporal coordinates a top-level Run workflow and scoped Task execution, including sandbox allocation, workspace attachment, dispatch, approval waits, and cleanup. The team coordinator persists plan revisions and task transitions, with one workflow path responsible for advancing each accepted command. Keep token streams and large outputs outside workflow history; store references and lifecycle transitions there.
 
 Temporal Activities can retry. Completed Activities are not re-executed during normal workflow replay, but an operation that completed before its result was recorded may run again. Every external effect therefore needs appropriate idempotency or reconciliation. See [Temporal Activity idempotency](https://docs.temporal.io/activity-definition).
 
-Starting a CLI process is an asynchronous command, not an exactly-once transaction. The Runner keeps a command registry and acknowledges a stable dispatch identifier. Workflow retries first inspect the existing command or attempt. Do not blindly relaunch an Agent after a timeout.
+Starting a CLI process is an asynchronous command, not an exactly-once transaction. The Runner keeps a command registry and acknowledges a stable Task-attempt dispatch identifier. Workflow retries first inspect the existing command or attempt. Do not blindly relaunch an Agent after a timeout.
 
 ### State ownership
 
 | State | Authority | Recovery approach |
 | --- | --- | --- |
-| Application entities and event cursor | PostgreSQL | Database recovery and event replay |
+| Conversations, plans, Tasks, and event cursors | PostgreSQL | Database recovery and event replay |
 | Workflow progression | Temporal | Workflow history and deterministic replay |
 | Native conversation | Agent session files and native IDs | Adapter-supported session continuation |
 | Workspace files | Persistent storage and checkpoint manifests | Attach a volume or restore a consistent checkpoint |
@@ -218,6 +314,8 @@ PostgreSQL exposes application state, while Temporal owns workflow execution his
 
 ### Run lifecycle
 
+A team Run aggregates its Task graph. It remains running while required work is active; a waiting state applies when progress is blocked and no required Task can run. It can succeed only after all required results and integration checks are accepted; the Leader becoming idle does not mean the team is complete.
+
 ```text
 queued -> provisioning -> running -> succeeded
                             |----> failed
@@ -227,9 +325,9 @@ queued -> provisioning -> running -> succeeded
                             |----> interrupted -> reconciliation_required
 ```
 
-These are application-level states, not a guarantee that every provider emits matching events. A validated native completion result determines success; a process exit alone may be insufficient. Restoration creates a tracked attempt only after confirming that the previous attempt can no longer execute.
+These are application-level states, not a guarantee that every provider emits matching events. A validated native completion result determines success; a process exit alone may be insufficient. Restoration creates a tracked attempt only after confirming that the previous attempt can no longer execute. Recover completed Task results, dependency state, pending approvals, and integration independently; never rerun the entire team because its Leader process was lost.
 
-Acquire an execution lease and increasing fencing token for each attempt. The control plane rejects stale writes; controlled operation brokers reject stale execution authority. A disconnected Runner must stop new work when its lease expires. Before replacement, revoke its credentials and terminate or isolate its sandbox, because server-side fencing alone cannot stop arbitrary network traffic from an old process.
+Acquire an execution lease and increasing fencing token for each attempt. The control plane rejects stale writes; controlled operation brokers reject stale execution authority. Check both attempt fencing and plan version so a superseded Task cannot accept results or release dependent Tasks. A disconnected Runner must stop new work when its lease expires. Before replacement, revoke its credentials and terminate or isolate its sandbox, because server-side fencing alone cannot stop arbitrary network traffic from an old process.
 
 ### Recovery guarantees
 
@@ -291,7 +389,7 @@ Read-only mode requires actual filesystem, tool, and network restrictions; an in
 
 ### Approval execution
 
-Bind each approval to the requester identity, tenant, Run, attempt, native request ID, canonical operation hash, scope, expiry, and single-use execution identifier. Present the concrete command, target, draft, or proposed change. Revalidate authorization at execution time, and require a new approval if the operation changes. Do not interpret arbitrary chat text as an approval token.
+Bind each approval to the requester identity, tenant, Conversation, Run, Task, plan version, attempt, native request ID, canonical operation hash, scope, expiry, and single-use execution identifier. Present the concrete command, target, draft, or proposed change. Revalidate authorization at execution time, and require a new approval if the operation changes. Do not interpret arbitrary chat text as an approval token.
 
 For sensitive publishing, withhold privileged credentials from arbitrary shell processes and route the operation through an authenticated broker. Enforce network and credential boundaries so a second tool cannot bypass the approved path. An allowed hostname alone does not distinguish read and write operations on that service.
 
@@ -322,7 +420,7 @@ Maintain separate English and Simplified Chinese documents with equivalent cover
 | UI locale | Default to `en`, support `zh-CN`, and preserve explicit user selection |
 | Translation resources | Use stable keys, matching catalogs, and ICU-style formatting |
 | User-facing errors | Return stable codes and parameters; localize presentation |
-| Agent response language | Configure per Session independently of UI locale |
+| Agent response language | Configure a Conversation default with explicit per-Agent overrides, independently of UI locale |
 | Raw technical content | Preserve code, paths, commands, and CLI errors; offer translation separately |
 | Development artifacts | Use English for identifiers, comments, APIs, logs, tests, primary docs, and PRs |
 | Time and formatting | Store timestamps consistently and render with user locale and timezone |
@@ -336,11 +434,12 @@ Programming-language support is a separate capability. Offer versioned environme
 
 | Layer | Candidate | Rationale |
 | --- | --- | --- |
-| Web client | React, Vite, TypeScript | Interactive workspace with a separate API boundary |
+| Web client | React, Vite, TypeScript, shadcn/ui | Interactive workspace with a separate API boundary |
 | Internationalization | i18next with ICU support | English source catalog and Chinese translations |
 | Control API | Fastify and TypeScript | Typed Node.js service with schema validation |
 | Contracts | JSON Schema, TypeBox, OpenAPI | Versioned transport and generated API documentation |
 | Application database | PostgreSQL | Durable relational state and event indexes |
+| Agent runtime | Pi TypeScript SDK in supervised hosts | Independent sessions and reviewed platform tools |
 | Workflow execution | Temporal | Persistent lifecycle coordination and asynchronous waits |
 | Cache and rate limiting | Valkey | Cache candidate with a BSD-3-Clause main-project license |
 | Object storage | S3-compatible storage | Workspace checkpoints, logs, and artifacts |
@@ -368,7 +467,7 @@ Deploy the Web client, API, and workflow worker independently. Prefer managed Po
 
 Local development can run the API and worker against local infrastructure and a restricted development Runner. A local Runner is not the production boundary for hostile multi-tenant workloads. The Mac development environment does not need to host Firecracker; integration tests can target a managed sandbox or compatible Linux host.
 
-Use organization, project, Session, Run, and attempt identifiers to correlate logs and traces. Record queue delay, sandbox allocation time, first-event latency, execution failures, reconnect success, checkpoint age, approval waits, and resource consumption. Keep operational telemetry separate from user content and apply retention limits and secret filtering.
+Use organization, Conversation, project, Run, Task, AgentInstance, and attempt identifiers to correlate logs and traces. Record queue delay, sandbox allocation time, first-event latency, execution failures, reconnect success, checkpoint age, approval waits, and resource consumption. Keep operational telemetry separate from user content and apply retention limits and secret filtering.
 
 Provider usage statistics may be missing or estimated. Track platform compute/storage separately from model charges, and do not present an estimate as an invoice. Enforce execution time, concurrency, CPU/memory, disk, artifact, and retention quotas even when model usage cannot be measured precisely.
 
@@ -379,13 +478,16 @@ Back up application data and required workflow state, define object retention, a
 ```text
 nexrun/
 ├── apps/
-│   ├── web/                  # English-first multilingual workspace
+│   ├── web/                  # English-first chat list and chat detail
 │   ├── api/                  # Control plane API
 │   ├── worker/               # Durable workflows and reconciliation
 │   └── runner/               # Sandbox process supervision
 ├── packages/
 │   ├── protocol/             # Commands, events, errors, and capabilities
-│   ├── adapters/             # Agent integrations
+│   ├── adapters/             # Pi integration and future Agent adapters
+│   ├── conversations/        # Membership, recipients, and chat publication
+│   ├── teams/                # Team definitions, plans, tasks, and coordination
+│   ├── pi-tools/             # Reviewed team and policy tools for Pi hosts
 │   ├── sandbox/              # Sandbox Provider integrations
 │   ├── policy/               # Permission and approval logic
 │   ├── db/                   # Data model and migrations
@@ -400,44 +502,53 @@ This layout describes the implementation target. Modules should share typed cont
 
 ## Delivery plan and acceptance criteria
 
-### Foundation
+### Chat and Pi foundation
 
-Initialize the TypeScript workspace, versioned contracts, PostgreSQL migrations, identity, and license checks. Add English and Chinese catalogs from the first screen. Establish command idempotency, persisted events, and a fake Adapter for deterministic integration tests.
+Implement [Sprint 1](sprints/sprint1.md): the TypeScript workspace, dependency gate, React/shadcn chat screens, Node.js APIs, PostgreSQL history, mock streaming, and a tool-disabled Pi host. Validate send, stop, refresh, and reconnect behavior. Full identity and sandbox execution are later slices; the first preview remains access-controlled rather than publicly multi-tenant.
 
-### Remote execution MVP
+### Groups and bounded teams
 
-Integrate one sandbox provider and two structured Agent Adapters, with Codex and Claude Code as initial candidates subject to terms review. Add PTY fallback with clear capability limits. Deliver repository import, isolated workspaces, task submission, streaming, diffs, artifacts, supported approvals, native session continuation, and resource limits.
+In a later release, add same-tenant human/Agent membership, mention-only routing, stable recipient IDs, TeamBinding configuration, and a predefined Leader/Builder/Reviewer team. Implement explicit delegation, durable task dependencies, isolated task workspaces, review and serialized integration, bounded concurrency, permissions, and cancellation.
 
-Validate the following before calling the MVP complete:
+The first delivery is Pi-first and single-Agent. Groups and teams are not required for its completion. Other CLI Adapters, general PTY compatibility, free-form recursive teams, cross-tenant group federation, desktop streaming, and a full IDE remain later capabilities.
 
-1. Closing the browser does not stop an accepted Run; reconnecting reconstructs persisted events without duplicate messages.
-2. Repeating a submission with the same idempotency key creates one logical Run.
-3. API or worker restart does not blindly relaunch an acknowledged Agent process.
-4. Workspace files, including uncommitted changes covered by a checkpoint, survive sandbox replacement.
-5. Recovery describes its boundary accurately and does not silently repeat an operation whose external result is unknown.
-6. Concurrent tasks cannot write the same working copy without the required lease.
-7. Expired, replayed, stale-attempt, or changed-operation approvals cannot authorize execution.
-8. A denied sensitive operation cannot be performed through an alternative shell path using platform-held credentials.
-9. Cross-tenant API, event, terminal, preview, and artifact requests are rejected.
-10. English and Chinese screens, errors, approvals, input methods, and reconnect states behave consistently.
-11. Resolved dependencies and actual release artifacts pass the commercial admission policy and include required notices.
+The following are target-system acceptance properties. Apply only those belonging to the release scope; group/team properties become required when those features ship. Sprint 1 has its own narrower checklist:
 
-Use Adapter contract tests, Runner lifecycle tests, workflow failure injection, tenant-boundary tests, and targeted end-to-end scenarios to verify these properties. Test node loss, duplicate callbacks, stale leases, slow event consumers, and incomplete checkpoint uploads.
+1. Closing the browser does not stop accepted work; reconnecting restores visible history without duplicate messages or losing unread state.
+2. Repeated Message, Run, delegation, or result commands create one logical effect per idempotency key.
+3. An ordinary group message or Agent-authored mention does not trigger every member or an autonomous reply loop.
+4. A direct chat's native Pi context is never reused by a group or another AgentInstance.
+5. Only the addressed Agent or selected team Leader receives execution input; participants can distinguish saved messages from accepted work.
+6. Worker Tasks receive authorized task packets, independent native context, and immutable result/dependency references.
+7. Cyclic plans, excessive Tasks, recursive delegation, and exhausted budgets cannot bypass the coordinator.
+8. API, worker, or Leader restart recovers persisted Task state without relaunching acknowledged work or rerunning the whole team.
+9. Sandbox replacement restores checkpointed files and native state, including covered uncommitted work; uncertain external effects require reconciliation.
+10. Parallel writers use independent working copies; integration has one writer and reviews the actual resulting revision.
+11. Expired, replayed, stale-attempt, changed-plan, or changed-operation approvals cannot authorize execution.
+12. A denied sensitive action cannot be bypassed through another shell path using platform-held credentials; a Leader cannot approve itself.
+13. Member removal or privilege reduction revokes access and pauses work relying on that authority; private Task logs are never streamed to unauthorized group clients.
+14. Team cancellation prevents new dispatch and stale results cannot reactivate dependent work; actual partial outcomes remain visible.
+15. English and Chinese UI, errors, approvals, input methods, and reconnect behavior remain equivalent.
+16. Resolved dependencies, reviewed Pi resources, and actual release images satisfy commercial admission and notice requirements.
+
+Use Pi Adapter contract tests, deterministic router/coordinator tests, dependency-graph and revision tests, Runner lifecycle tests, tenant/group boundary tests, and workflow failure injection. Include Unicode event handling, process loss, duplicate callbacks, stale leases, slow consumers, interrupted approvals, and incomplete checkpoints.
 
 ### Subsequent releases
 
-Add Gemini CLI structured integration, additional environment templates, schedules and webhook triggers, notification controls, and provider portability. Introduce desktop streaming, richer collaboration, controlled multi-Agent orchestration, and a self-managed Firecracker pool only after execution and recovery behavior are established.
+Add additional team templates, richer Task inspection, schedules/webhooks, and other CLI Adapters after the Pi workflow is reliable. Desktop streaming, a self-managed Firecracker pool, and broader autonomous orchestration remain later features.
 
-Future external triggers require authenticated ingestion and deduplication. User instructions receive scheduling priority; low-priority work can wait, while interruption still follows Adapter capabilities. Background progress remains quiet unless completion, failure, blocking input, or an approval needs attention.
+External triggers require authenticated ingestion and deduplication. User instructions receive priority, but steering/cancellation retain explicit scope and supported semantics. Keep background notifications quiet except for meaningful completion, failure, required input, or approval.
 
 ## Decisions to validate before implementation
 
 | Decision | Required validation |
 | --- | --- |
 | First sandbox provider | Commercial terms, target region, isolation, network policy, storage durability, and pause/resume behavior |
-| Agent versions and authentication | Exact protocol behavior, native state retention, hosting rights, and supported user authorization flows |
+| Pi version and model authentication | SDK/event semantics, package identity, native state retention, reviewed extensions, provider terms, and permitted credentials |
+| Team defaults | Role permissions, maximum Tasks/concurrency, repair cycles, budget owner, and result acceptance policy |
+| Group policy | Membership administration, history disclosure, operator/approver permissions, and revocation handling |
 | Storage implementation | Persistent-volume portability or checkpoint strategy, consistency boundary, and recovery cost |
 | Workflow deployment | Managed versus self-operated Temporal, operating cost, and backup responsibilities |
-| Publishing operations | Which actions the MVP supports and which broker paths enforce them |
+| Publishing operations | Which later executable actions are supported and which broker paths enforce them; none in Sprint 1 |
 | Recovery objectives | Acceptable checkpoint gap, restoration latency, retention, and measured costs |
 | Distribution model | Hosted SaaS first; reassess obligations before shipping customer-hosted images |
