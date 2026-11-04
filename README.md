@@ -54,9 +54,15 @@ Messages, Runs, and sequenced events are persisted in PostgreSQL. Leaving a chat
 
 Stop requests cancellation and remains pending until termination is observed or the supervised host is forcibly stopped. Partial text and the observed final state remain visible. On API restart, unresolved accepted work becomes interrupted after previous Pi hosts are reconciled; it is not automatically submitted to the model again.
 
+## Agent administration
+
+Open **Settings** in the sidebar or visit [http://127.0.0.1:5173/admin/settings](http://127.0.0.1:5173/admin/settings). Configure Mock/Pi, an OpenAI model, the Agent's reply language, and an API key using the shadcn form. Saves take effect immediately while the service is idle. Saved keys are encrypted, never returned by the API, and can be replaced, removed, or explicitly inherited from the environment.
+
+For shared deployments, configure `NEXRUN_ADMIN_TOKEN` and authenticated TLS access. Back up the encryption key with the database; by default it is in `.data/pi/configuration/encryption.key`, or supply a stable 32-byte base64 `NEXRUN_CONFIG_ENCRYPTION_KEY`. See the complete [administration and recovery guide](docs/admin-settings.md) for access rules, credential actions, revision conflicts, model binding, and backups.
+
 ## Text-only Pi
 
-Set the following values privately in `.env`:
+Use Settings to configure Pi interactively. Before the first explicit settings save, the following private `.env` values also provide the startup defaults:
 
 ```dotenv
 AGENT_MODE=pi
@@ -67,7 +73,7 @@ NEXRUN_OPENAI_API_KEY=replace-with-your-authorized-key
 
 `NEXRUN_OPENAI_API_KEY` takes precedence over `OPENAI_API_KEY`; the latter remains a fallback for server environments. Use an authorized, usable OpenAI API credential. A present environment variable does not prove that authentication, quota, or model access is valid. Keep keys out of chat messages, source files, client environment variables, screenshots, and logs. `.env` is ignored by Git.
 
-Restart the API after changing configuration. Start a new chat after switching between `mock` and `pi`; a chat with an existing Agent session cannot switch its runtime or convert mock history into native Pi context.
+Settings-page saves apply without restarting. Environment changes require an API restart; after the first settings save, persisted runtime/model/language choices take precedence over those defaults. Start a new chat after switching between `mock` and `pi` or changing Pi models. Existing history stays readable, and replacing a key for the same Pi model can continue an existing chat.
 
 Pi runs in a dedicated supervised child process for each generation, with an independent persisted native session per conversation. All tools, extensions, hooks, skills, prompt templates, repository instructions, and resource discovery are disabled. Slash-prefixed input remains text. The host receives only the selected model credential and controlled environment settings; it does not read personal Pi authentication or settings. Native session files and manifests stay server-side with restricted permissions.
 
@@ -81,9 +87,12 @@ Configuration values in `.env.example` include:
 | `API_HOST` / `API_PORT` | `127.0.0.1` / `3001` |
 | `AGENT_MODE` | `mock`; use `pi` for the configured real Adapter |
 | `PI_PROVIDER` / `PI_MODEL` | `openai` / `gpt-5-mini`; model selection is server-side |
+| `AGENT_RESPONSE_LANGUAGE` | `auto`, `en`, or `zh-CN`; initial reply-language default, independent of UI locale |
 | `PI_STATE_DIR` | `../../.data/pi`, resolved from the API workspace directory |
 | `NEXRUN_OPENAI_API_KEY` | Preferred project-specific server credential; supply privately |
 | `OPENAI_API_KEY` | Fallback server credential |
+| `NEXRUN_ADMIN_TOKEN` | Optional long random token; required for management in shared deployments |
+| `NEXRUN_CONFIG_ENCRYPTION_KEY` | Optional stable base64-encoded 32-byte key; otherwise use private server state |
 | `GENERATION_TIMEOUT_MS` | `60000` |
 | `MAX_CONCURRENT_RUNS` | `2` |
 | `ALLOWED_ORIGINS` | Explicit local Web origins on port 5173 |

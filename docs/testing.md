@@ -1,6 +1,6 @@
 # Testing and mock data
 
-[Simplified Chinese version](testing.zh-CN.md) · [Runbook](../README.md) · [Sprint 1](sprints/sprint1.md)
+[Simplified Chinese version](testing.zh-CN.md) · [Runbook](../README.md) · [Sprint 1](sprints/sprint1.md) · [Agent administration](admin-settings.md)
 
 NexRun separates deterministic application checks from live model verification. Mock replies are presentation fixtures, not a substitute for a model or evidence that an external provider works. All fixtures in this repository are first-party synthetic data.
 
@@ -15,7 +15,7 @@ npm run build
 
 `check` runs TypeScript, ESLint, the exact-release license gate, and the Node test suite. API and demo-data tests create temporary database schemas and remove them afterward. They never reset the development schema. `TEST_DATABASE_URL` selects their database independently of the application's `DATABASE_URL`.
 
-Local verification on 2026-11-04 passed all 65 Node tests, all thirteen browser scenarios, typecheck, lint, build, and the license gate for 552 exact locked artifacts. No remote CI or successful live provider run is claimed by these results.
+Local verification on 2026-11-05 passed all 90 Node tests, all 19 browser scenarios, typecheck, lint, build, and the license gate for 552 exact locked artifacts. The deterministic Pi tests comprise 17 host/supervisor tests and six output tests. No remote CI or successful live provider run is claimed by these results.
 
 For browser tests, stop any manually started API and Web servers before running:
 
@@ -23,7 +23,7 @@ For browser tests, stop any manually started API and Web servers before running:
 npm run test:e2e
 ```
 
-Playwright reserves ports 3001 and 5173, forces mock mode, creates its own random PostgreSQL schema and temporary Pi state, and shuts the API down gracefully to remove those resources. Local tests use installed Google Chrome; CI uses the matching Playwright Chromium. Browser installation instructions are in the runbook. No provider credentials are required by these checks.
+Playwright reserves ports 3001 and 5173, starts in mock mode, creates its own random PostgreSQL schema and temporary Pi state, and shuts the API down gracefully to remove those resources. Administration scenarios can select Pi through an injected runtime that cannot start a model host; their credential checker and keys are synthetic. Local tests use installed Google Chrome; CI uses the matching Playwright Chromium. Browser installation instructions are in the runbook. No real provider credentials or model calls are required by these checks.
 
 To isolate a failure, run only the relevant files:
 
@@ -38,9 +38,9 @@ Pi host lifecycle tests also inspect and signal only their own marked child proc
 
 ## Deterministic mock scenarios
 
-Normal messages receive a short, intent-based suggestion or greeting. They do not echo the full prompt, append previous messages, or expose a transcript. English is the fallback; explicit response-language requests in the current prompt take priority, followed by Chinese-script detection. UI locale and prior conversation language do not select the answer language.
+Normal messages receive a short, intent-based suggestion or greeting. They do not echo the full prompt, append previous messages, or expose a transcript. In automatic response-language mode, English is the fallback; the last recognized explicit response-language request in the current prompt takes priority, followed by Chinese-script detection. A fixed English or Simplified Chinese response language saved in administration overrides this automatic selection for future replies. UI locale and prior conversation language do not select the answer language.
 
-These case-sensitive commands are development fixtures. Surrounding whitespace is ignored; embedded newlines or command lookalikes are ordinary input. Optional single-line arguments can select a response language; code and Markdown payloads remain fixed.
+These case-sensitive commands are development fixtures. Surrounding whitespace is ignored; embedded newlines or command lookalikes are ordinary input. In automatic mode, optional single-line arguments can select a response language; code and Markdown payloads remain fixed. The language examples below assume automatic mode.
 
 | Input | Expected behavior |
 | --- | --- |
@@ -87,7 +87,7 @@ Stable fixture IDs make import repeatable. A second import skips existing IDs, p
 
 ## Response boundaries and coverage
 
-The Pi system policy asks for key conclusions and relevant information, concise by default, in the requested language. It permits detailed explanations when requested. It disallows transcript replay, private reasoning, internal traces, status logs, and claims of actions unavailable to the text-only runtime.
+The Pi system policy asks for key conclusions and relevant information, concise by default. Automatic mode follows the prompt's language; a fixed administration response-language setting selects future assistant prose independently of the UI locale. Original prompts, quotations, and code are preserved. The policy permits detailed explanations when requested. It disallows transcript replay, private reasoning, internal traces, status logs, and claims of actions unavailable to the text-only runtime.
 
 The host forwards only the current assistant message's public text events and canonical final text. It does not serialize aggregate Agent/session history, user messages, thinking content, tool arguments/results, or status events as the reply. Previous chat messages still exist as separate history entries in the UI. Ordinary quoted labels, requested code, Unicode, whitespace, and longer explanations are preserved; there is no blanket regex deletion or arbitrary shortening of model text.
 
@@ -95,12 +95,21 @@ The host forwards only the current assistant message's public text events and ca
 | --- | --- |
 | Mock Adapter | Concise deterministic replies, explicit language requests, bounded relevant context, command parsing, Unicode, exact cumulative streaming, Stop, partial failure, callback backpressure |
 | Pi output and host | Public-text filtering, canonical final text, stale/late events, real SDK event wiring with a synthetic stream, private resources, credential isolation, cancellation, timeout, crash reconciliation |
-| API | Atomic acceptance/outbox, idempotency, capacity, ownership, history pagination, SSE replay/resync, partial persistence, restart interruption |
+| API | Atomic acceptance/outbox, idempotency, capacity, ownership, history pagination, SSE replay/resync, partial persistence, restart interruption, serialized configuration/message admission, hot application and Pi model binding |
+| Administration | Encrypted credentials, private master-key permissions, restart recovery, key actions/environment fallback, revision conflicts, confirmed rollback, unknown-commit fail-closed recovery, validation, endpoint authorization, sanitized metadata-only checks |
 | Demo data | Atomic/repeatable imports, owner conflicts, user edit preservation, continuation, multi-page history and event reconstruction |
-| Browser | Context isolation and concise replies, offline/navigation/refresh recovery, Stop, send retry, failure recovery, rename/archive, Chinese mobile IME, Markdown/code copying and localized notifications, answer/UI language independence, pagination, input validation, language-menu keyboard controls, modal focus trapping and restoration |
+| Browser | Context isolation and concise replies, offline/navigation/refresh recovery, Stop, send retry, failure recovery, rename/archive, Chinese mobile IME, Markdown/code copying and localized notifications, answer/UI language independence, pagination, input validation, language-menu keyboard controls, modal focus trapping and restoration, bilingual/mobile administration and synthetic runtime/key workflows |
 | Dependency gate | Lockfile changes, unreviewed or incompatible licenses, copied component source drift |
 
 The interface uses official shadcn Base UI primitives. The language tests interact with an accessible combobox/listbox rather than a native selection menu. Modal checks exercise the rename Dialog and archive AlertDialog, including initial focus, Tab containment, Escape/cancel, localized labels, and restored trigger focus. Keyboard tests wait for the actual focused option before the next key so asynchronous focus placement cannot hide a regression or select the previous option.
+
+## Administration coverage
+
+Settings and Node API integration tests verify encrypted persistence without plaintext in the database or public responses, master-key permissions and tamper rejection, revision-zero environment defaults, explicit key replacement/removal/inheritance, stale revisions, active-Run protection, and rollback that leaves the old runtime usable. A lost-COMMIT-acknowledgement regression performs a real PostgreSQL commit before injecting a transport failure: cached settings become unavailable, queued message admission is rejected, the API closes, and a restarted service recovers the committed revision instead of accepting work with old credentials.
+
+Actual local-Origin and token authorization are exercised against Node endpoints. The browser unlock scenario simulates the HTTP 401 transport contract; it does not establish server authorization by itself. Browser workflows use synthetic keys and network-free runtime/checker fixtures to test saving and reloading Mock/Pi/model/language settings, key replacement/removal/environment fallback, credential diagnostics, stale revisions, active-Run rejection, and secret input/token lifetime. These checks make no real model calls.
+
+Hot-application tests verify that configuration changes and message acceptance share admission serialization, same-model credential rotation can continue a Pi chat, and a changed Pi model requires a new chat. Reply-language checks cover both automatic mock selection and a fixed administration override independently of UI language. The credential checker uses model metadata access rather than generation; its successful synthetic result is not proof of provider authentication or a real Pi reply. Setup, access, backup, and recovery details are in the [Agent administration guide](admin-settings.md).
 
 ## Live Pi verification
 

@@ -54,9 +54,15 @@ npm run dev
 
 停止操作会请求取消，并保持待确认状态，直到观察到终止，或受监督宿主被强制停止。部分文本和实际观察到的最终状态仍然可见。API 重启时，会先核对并处理先前的 Pi 宿主，再将尚未解决的已接受工作标为中断；不会自动重新向模型提交。
 
+## Agent 管理配置
+
+打开侧栏中的**设置**，或访问 [http://127.0.0.1:5173/admin/settings](http://127.0.0.1:5173/admin/settings)。通过 shadcn 表单配置 Mock/Pi、OpenAI 模型、Agent 回复语言和 API Key。服务空闲时，保存立即生效。已保存的 Key 会被加密，API 不会回传，可以替换、移除或明确继承环境变量。
+
+共享部署应配置 `NEXRUN_ADMIN_TOKEN` 和经身份验证的 TLS 访问。备份数据库时同时保留加密主密钥；默认位于 `.data/pi/configuration/encryption.key`，也可以提供稳定的 32 字节 base64 `NEXRUN_CONFIG_ENCRYPTION_KEY`。访问规则、凭据操作、版本冲突、模型绑定和备份步骤见完整的[管理与恢复指南](docs/admin-settings.zh-CN.md)。
+
 ## 纯文本 Pi
 
-在 `.env` 中私下设置以下值：
+可以通过设置页面交互配置 Pi。首次明确保存设置前，以下私有 `.env` 值也可提供启动默认值：
 
 ```dotenv
 AGENT_MODE=pi
@@ -67,7 +73,7 @@ NEXRUN_OPENAI_API_KEY=replace-with-your-authorized-key
 
 `NEXRUN_OPENAI_API_KEY` 优先于 `OPENAI_API_KEY`；后者仍可作为服务端环境的回退值。请使用已获授权且可用的 OpenAI API 凭据。环境变量存在，并不代表身份验证、额度或模型访问一定有效。不要将密钥放入聊天消息、源文件、客户端环境变量、截图或日志。Git 会忽略 `.env`。
 
-修改配置后重启 API。在 `mock` 和 `pi` 之间切换后，请创建新聊天；已有 Agent 会话的聊天不能切换运行时，也不能将模拟历史转换为原生 Pi 上下文。
+设置页面保存后无需重启。环境变量变化需要重启 API；首次保存后，持久化的运行时、模型和语言选择优先于这些默认值。在 `mock` 与 `pi` 之间切换或更换 Pi 模型后，请新建聊天。已有历史仍可查看；替换同一 Pi 模型的密钥可以继续已有聊天。
 
 Pi 每次生成都在专用的受监督子进程中运行，每个对话具有独立持久化的原生会话。所有工具、扩展、hook、技能、提示模板、仓库指令和资源发现均被禁用。以斜杠开头的输入仍按文本处理。宿主仅接收所选模型凭据和受控环境配置，不读取个人 Pi 身份验证或设置。原生会话文件和清单保留在服务端，并限制访问权限。
 
@@ -81,9 +87,12 @@ Pi 每次生成都在专用的受监督子进程中运行，每个对话具有�
 | `API_HOST` / `API_PORT` | `127.0.0.1` / `3001` |
 | `AGENT_MODE` | `mock`；使用 `pi` 启用已配置的真实 Adapter |
 | `PI_PROVIDER` / `PI_MODEL` | `openai` / `gpt-5-mini`；模型在服务端选择 |
+| `AGENT_RESPONSE_LANGUAGE` | `auto`、`en` 或 `zh-CN`；独立于 UI 语言的初始回复语言默认值 |
 | `PI_STATE_DIR` | `../../.data/pi`，相对于 API 工作区目录解析 |
 | `NEXRUN_OPENAI_API_KEY` | 优先使用的项目专用服务端凭据；请私下提供 |
 | `OPENAI_API_KEY` | 服务端回退凭据 |
+| `NEXRUN_ADMIN_TOKEN` | 可选的长随机令牌；共享部署中的管理访问必须配置 |
+| `NEXRUN_CONFIG_ENCRYPTION_KEY` | 可选的稳定 32 字节 base64 密钥；否则使用私有服务端状态 |
 | `GENERATION_TIMEOUT_MS` | `60000` |
 | `MAX_CONCURRENT_RUNS` | `2` |
 | `ALLOWED_ORIGINS` | 明确列出的本地 Web 源，使用端口 5173 |

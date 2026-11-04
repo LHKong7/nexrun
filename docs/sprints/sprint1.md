@@ -6,7 +6,7 @@ Created: 2026-11-04
 
 Language: English
 
-[Simplified Chinese version](sprint1.zh-CN.md) · [Target architecture](../architecture.md)
+[Simplified Chinese version](sprint1.zh-CN.md) · [Target architecture](../architecture.md) · [Agent administration](../admin-settings.md)
 
 ## Sprint goal
 
@@ -49,7 +49,9 @@ Title search, dark mode, richer code highlighting, and additional small visual r
 
 ### Explicitly deferred
 
-Agent Teams, group chats, mentions, member management, task DAGs, multi-Agent execution, attachments, repository import, file modification, terminals, application previews, tool approvals, model-selection UI, secret-entry UI, full user accounts/OIDC, organizations, billing, background schedules, and other CLI integrations are deferred.
+Agent Teams, group chats, mentions, member management, task DAGs, multi-Agent execution, attachments, repository import, file modification, terminals, application previews, tool approvals, full user accounts/OIDC, organizations, billing, background schedules, and other CLI integrations are deferred.
+
+Model selection and server-side credential entry were added in the 2026-11-05 single-owner administration follow-up. This includes encrypted settings, independent reply language, and guarded runtime changes; it does not introduce a multi-user identity system. See the [Agent administration guide](../admin-settings.md).
 
 Do not deploy Temporal, Valkey, S3, a sandbox pool, or Firecracker for this slice. Those remain target-architecture options for later execution workloads. Do not add placeholder controls that imply these features already work.
 
@@ -197,7 +199,7 @@ After reviewing Sprint 1, choose the next slice based on observed gaps: stronger
 
 ## Implementation record
 
-Verification date: 2026-11-04. This sprint is not signed off as fully complete while real Pi acceptance is blocked.
+Verification date: 2026-11-05. This sprint is not signed off as fully complete while real Pi acceptance is blocked.
 
 | Item | Current status |
 | --- | --- |
@@ -206,9 +208,9 @@ Verification date: 2026-11-04. This sprint is not signed off as fully complete w
 | S1-03 | Implemented; English/Chinese catalogs, official shadcn Base UI primitives, responsive routes and contracts |
 | S1-04 | Implemented; PostgreSQL persistence, migrations and owner-scoped chat APIs verified |
 | S1-05 | Implemented; replay, idempotency, cancellation, partial persistence and conservative restart behavior verified |
-| S1-06 | Implemented; all thirteen mock-backed browser acceptance scenarios passed, including concise replies, language independence, pagination, offline recovery and Chinese mobile IME |
-| S1-07 | Implemented; 22 deterministic Pi host/output tests passed, including real SDK events with a synthetic stream, but live OpenAI/Pi acceptance remains blocked by HTTP 401 authentication |
-| S1-08 | Local typecheck, lint, build and 65 automated tests passed; all thirteen browser scenarios passed; final acceptance still depends on S1-07 |
+| S1-06 | Implemented; all 19 browser acceptance scenarios passed with mock execution and synthetic administration fixtures, including concise replies, language independence, pagination, offline recovery, Chinese mobile IME and settings workflows |
+| S1-07 | Implemented; 23 deterministic Pi tests passed (17 host/supervisor and six output tests), including real SDK events with a synthetic stream, but live OpenAI/Pi acceptance remains blocked by HTTP 401 authentication |
+| S1-08 | Local typecheck, lint, build and all 90 Node tests passed without skips; all 19 browser scenarios passed; final acceptance still depends on S1-07 |
 | S1-09 | Not started; optional refinements remain deferred |
 
 The initial browser run exposed an offline status bug. It was fixed with explicit browser offline/online handling and a fresh snapshot before reconnect; the original assertions were retained. Browser tests now use their own generated PostgreSQL schema and temporary Pi state rather than sharing development chat history.
@@ -222,3 +224,7 @@ The mock/test follow-up replaces prompt/history reflection with concise determin
 The expanded browser suite initially exposed a test-helper race: after a second send, a terminal-state assertion could select the previous completed turn. It now waits for the exact newly submitted assistant message order. All substantive assertions were retained, and the complete ten-scenario suite passed. Isolated browser/demo test schemas were confirmed removed after teardown. This follow-up makes no new model requests and does not change the live authentication blocker.
 
 The subsequent UI migration replaces native/custom controls with official shadcn Base UI components, including Select, Dialog/AlertDialog, Sidebar, Toast, Tooltip, cards, badges, avatars, loading states, and scroll areas. It also maps Markdown tables and task checkboxes to shadcn primitives. The copied-source inventory now has 24 records, including one responsive hook; npm dependencies and the lockfile are unchanged. Localized labels and preserved chat behavior are covered by thirteen browser scenarios, including keyboard selection, modal focus containment/restoration, and notification dismissal. Desktop (1440×1000) and mobile (390×844) visual checks confirmed in-bounds menus/dialogs and no document overflow.
+
+The 2026-11-05 administration follow-up adds persistent Mock/Pi/model selection, an independent automatic/English/Simplified Chinese reply-language setting, and encrypted provider credentials with explicit keep/replace/remove/environment-inheritance actions. Automatic mock language selection follows the current prompt's last recognized explicit request, then Chinese-script detection, with English as fallback; a fixed administration reply language overrides this selection for future prose while preserving prompts, quotations, code, and history. Configuration commits share admission serialization with messages. Hot changes require an idle service; Pi model changes require a new chat, while same-model credential rotation can continue an existing one.
+
+The current 90-test Node suite covers encrypted storage and restart recovery, revision-zero environment defaults, stale-revision conflicts, confirmed rollback, unknown-COMMIT fail-closed behavior, runtime/model binding, and actual local/token endpoint authorization. The lost-acknowledgement regression commits PostgreSQL changes before injecting failure, rejects cached settings and queued message admission, closes the API, and recovers the committed state on restart. The 19 browser scenarios include bilingual/mobile settings, runtime/model/language changes, key replacement/removal/environment fallback, and credential diagnostics using synthetic keys and network-free runtime/checker fixtures. The browser unlock scenario simulates the HTTP 401 transport contract; actual authorization is verified by Node integration tests. These follow-ups make no real model requests, and the live Pi authentication blocker remains. Credential metadata access is distinct from generation success. Access, secret backups, and recovery are documented in the [Agent administration guide](../admin-settings.md).
