@@ -19,6 +19,7 @@
     "test": "node --env-file-if-exists=.env --import tsx --test apps/api/test/*.test.ts scripts/license-gate.test.mjs",
     "test:e2e": "playwright test",
     "test:pi": "RUN_PI_SMOKE=1 node --env-file-if-exists=.env --import tsx scripts/pi-smoke.ts",
+    "test:workspace": "RUN_WORKSPACE_SMOKE=1 node --env-file-if-exists=.env --import tsx scripts/workspace-smoke.ts",
     "db:migrate": "npm run db:migrate --workspace @nexrun/api",
     "licenses:review": "node scripts/licenses.mjs review",
     "licenses:check": "node scripts/licenses.mjs check",

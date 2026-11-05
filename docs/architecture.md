@@ -1,6 +1,6 @@
 # NexRun Architecture
 
-Status: Target architecture; Sprint 1 implementation and Sprint 2 planned scope tracked in their sprint plans
+Status: Broader target architecture with an implemented local Sprint 1/2 slice; final live Pi acceptance remains unverified
 
 Updated: 2026-11-05
 
@@ -8,19 +8,41 @@ Language: English
 
 [Simplified Chinese version](architecture.zh-CN.md)
 
-NexRun is a chat-first cloud application for operating coding Agents. Version one uses Pi Agent as its primary and only deeply integrated Agent runtime. Users see a chat list and a chat detail page. Direct chat is the initial delivery; group chats and bounded Agent Team execution belong to later releases.
+NexRun's target is a chat-first cloud application for operating coding Agents. The implemented product is local and single-owner, with Pi as its primary and only deeply integrated Agent runtime. Users start from a chat list and chat detail, with Agent/resource management available separately. Group chats and bounded Agent Team execution belong to later releases.
 
-The architecture combines thin clients, a persistent control plane, and disposable cloud sandboxes. Each Pi runtime keeps its native reasoning loop and context inside the execution environment. NexRun owns conversation access, message routing, team coordination, durable tasks, authorization, event history, and recovery. A team Leader is also a sandboxed Pi Agent; the control-plane coordinator is a deterministic service, not another unrestricted reasoning loop.
+The broader target combines thin clients, a persistent control plane, and disposable cloud sandboxes. Each Pi runtime keeps its native reasoning loop and context inside its execution environment. NexRun owns conversation access, message routing, team coordination, durable tasks, authorization, event history, and recovery. In that target, a team Leader is a sandboxed Pi Agent; the control-plane coordinator is a deterministic service, not another unrestricted reasoning loop. The current local data-worker boundary is described separately below and does not implement the cloud/team topology.
 
 Commercial dependency admission and language conventions are governed by [AGENTS.md](../AGENTS.md). All package versions, transitive dependencies, images, extensions, and service terms must pass that policy before adoption.
 
 ## Current delivery scope
 
-[Sprint 1](sprints/sprint1.md) defines the current implementation commitment: React with shadcn/ui, a Node.js service, persisted direct chats, streaming, and one tool-disabled Pi Agent integration alongside a deterministic mock. Agent Teams and group chats are deferred. The sprint does not require executable tools, cloud sandbox infrastructure, Temporal, Valkey, or object storage.
+[Sprint 1](sprints/sprint1.md) supplies React/shadcn UI, the Node.js service, PostgreSQL direct-chat persistence, streaming, cancellation and independent native Pi sessions alongside a deterministic mock. Its initial Pi configuration is tool-disabled.
 
-The group, team, and sandbox sections below describe the target architecture for later releases. They are not Sprint 1 acceptance criteria. Text-only development uses a supervised host with tools/resources disabled; add the stronger execution boundary before enabling repository code or tools.
+[Sprint 2](sprints/sprint2.md) implements versioned profiles, conversation-local Agent identities, context epochs, persistent virtual text Workspaces, restricted file tools, manual knowledge/declarative skill revisions and source manifests. The `/agents-workspaces` UI provides profile/resource management, text-file editing/diffs and explicit chat bindings. Pure text chats retain an empty tool list; explicit Workspace Runs may use only authorized `file.list`, `file.read`, `file.search` and `file.write` operations. Scripts, repository instructions, extensions and automatic resource discovery remain disabled.
 
-[Sprint 2](sprints/sprint2.md) is the planned next slice: explicit Agent profiles/instances/session scopes, persistent Workspaces, isolated file tools, and manually enabled knowledge/declarative skills with context management. It is not implemented by this architecture update. Group/team execution and VM management remain outside that sprint.
+Local verification on 2026-11-05 passed typecheck, lint, build, license checks, 113 Node tests and 22 browser scenarios. Real local worker-enforcement checks are distinct from deterministic model/SDK fixtures. The environment's live Pi/OpenAI authentication still fails, so successful live model-driven workspace editing and final Sprint 2 acceptance remain unverified.
+
+The group/team, repository execution and cloud sandbox sections describe the broader target, not current features. No Team scheduler, general shell, VM management, Temporal, Valkey or object storage is required by the implemented slice. Full public multi-tenant isolation is not claimed.
+
+### Implemented Sprint 2 execution boundary
+
+Workspace files are bounded, immutable PostgreSQL text snapshots with explicit revisions, operation IDs, exclusive Run leases and fencing tokens. They are not OS-mounted working directories or Git repositories. Checkpoint manifests pair a Workspace revision with a sealed native-session copy and the corresponding context/profile/resource/runtime versions. Storage and native state survive individual worker processes; incompatible or uncertain recovery cannot silently reuse context or repeat an operation.
+
+The reviewed local execution provider invokes the installed Apple `sandbox-exec` with a deny-by-default Seatbelt policy. Only the hash-pinned Node 22.20.0 arm64 runtime and reviewed Apple executable are admitted. Each platform-owned data worker accepts a bounded text snapshot over stdin, performs in-memory file operations and returns bounded results. It cannot read user host-file contents, write host files, connect to a network or spawn subprocesses. It does not evaluate imported text. The trusted Pi/model host and database broker remain outside this worker; the broker independently checks ownership, operation identity, revision and active execution authority before publishing changes.
+
+Readiness verifies binary/policy identities and actual restrictions and fails closed on unsupported hosts. The five-second worker deadline, bounded IPC and 64 MiB V8 heap are not a general OS-level RSS/CPU quota. System library/share reads and directory metadata remain permitted. The deprecated Apple interface is admitted only for the reviewed local macOS use; there is no Linux, VM, shell or hostile multi-tenant execution guarantee and no new image or downloaded runtime. See the [native runtime review](dependencies/native-runtime.md) and [exact inventory](dependencies/native-runtime.json).
+
+```mermaid
+flowchart TB
+    UI["Chat and Agent/resource UI"] --> API["Single-owner API and dispatcher"]
+    API --> DB[("PostgreSQL revisions, Runs, leases and manifests")]
+    API --> Pi["Trusted supervised Pi host"]
+    Pi --> Model["Configured model service"]
+    Pi -->|Scoped file-tool IPC| Broker["Authoritative database broker"]
+    Broker --> DB
+    Broker -->|Bounded snapshot and operation| Worker["Seatbelt data worker\nNo user-file access, network or subprocesses"]
+    Worker -->|Bounded result| Broker
+```
 
 ## Goals and scope
 
@@ -28,9 +50,9 @@ The initial release provides a reliable English and Simplified Chinese direct-ch
 
 A **group** is a shared Conversation with members and an access policy. An **Agent Team** is a versioned role and delegation configuration. A **team Run** is one execution of that configuration for a user goal. These are distinct objects: creating a group neither starts a team nor grants it credentials. Sidebar folders and labels, if added, are presentation features rather than security groups.
 
-The first release excludes Agent Teams, group chats, multiple CLI integrations, a full IDE, executable tools, free-form Agent debate, recursive delegation, desktop streaming, automatic skill installation, and model fine-tuning. Future Agent Adapters remain an extension boundary, not an MVP delivery requirement.
+The current local release excludes Agent Teams, group chats, multiple CLI integrations, a full IDE, arbitrary executable tools, free-form Agent debate, recursive delegation, desktop streaming, automatic skill installation, and model fine-tuning. Sprint 2 adds only the restricted text-file operations described above. Future Agent Adapters remain an extension boundary, not a delivery requirement for this slice.
 
-## System boundaries
+## System boundaries (target)
 
 ```mermaid
 flowchart TB
@@ -98,7 +120,7 @@ The Runner can report scoped execution events and issue authorized team-tool req
 | Task | A versioned work, coordination, or integration unit within a Run, with dependencies, executor, and result contract |
 | AgentSession | Native Pi conversation/context for one AgentInstance and its permitted execution scope |
 | ExecutionAttempt | One leased dispatch of a Task to a Runner, with fencing token and native turn mapping |
-| Workspace | Durable working copy and environment specification, independent of the live runtime; optionally derived from a Project for a Run or Task |
+| Workspace | Durable file state independent of the live runtime; Sprint 2 uses PostgreSQL text snapshots, while later repository execution adds working copies and environment specifications |
 | KnowledgeItem | Versioned fact, preference or document with provenance, access scope and withdrawal state |
 | SkillDefinition | Versioned procedural instructions and reference material with declared tool requirements |
 | ContextManifest | Authorized input references/versions, selection decisions and context-budget metadata for a Run |
@@ -113,7 +135,7 @@ An AgentProfile is a recipe, not a global context or credential container. Insta
 
 Projects are optional when starting a discussion. Execution that needs source files must bind to a Project and authorized Workspace. A group may discuss several projects, but the first repository-enabled release binds each Run to at most one repository; it does not silently combine filesystem or credential scopes.
 
-Workspace mutation requires an exclusive lease, including terminal and auxiliary-tool writes. Concurrent writing Tasks receive independent working copies and normally separate sandboxes. Git worktrees share repository metadata and are not a tenant boundary. Workspace checkpoints include relevant uncommitted and untracked files, not just a repository URL and branch.
+Workspace mutation requires an exclusive lease, including terminal and auxiliary-tool writes when those tools are introduced. Sprint 2 conservatively leases the Workspace for an entire Run, including read-only Runs, while immutable revision views remain available. Future concurrent writing Tasks receive independent working copies and normally separate sandboxes. Git worktrees share repository metadata and are not a tenant boundary. Future repository checkpoints include relevant uncommitted and untracked files, not just a repository URL and branch; current text snapshots already preserve their full declared contents.
 
 ### Agent resources and context management
 
@@ -121,11 +143,11 @@ Capabilities comprise Tools and Skills. A Tool exposes an operation; a Skill des
 
 Knowledge is a separately scoped resource that an Agent can access, rather than an inseparable part of its identity. Keep project facts, user preferences and reference documents versioned and attributable. Chat history records statements, including hypotheses and outdated information; it is not automatically a fact store. System/role instructions define behavior, while retrieved documents, chat content and tool results retain their status as data.
 
-Context management selects authorized rules, task material, resource revisions and relevant files while accounting for native history and tool results. Record a source manifest and distinguish measured from estimated input usage. Limiting only newly injected text does not bound the full model input. Native continuation remains Adapter-owned; do not reconstruct it by replaying the shared timeline.
+Context management selects authorized rules, task material, resource revisions and relevant files while accounting for native history and tool results. Sprint 2 records source revisions and uses conservative byte accounting with an output reserve; it rejects oversized context instead of claiming exact token accounting or automatic compaction. Limiting only newly injected text does not bound the full model input. Native continuation remains Adapter-owned; do not reconstruct it by replaying the shared timeline.
 
 An AgentInstance may work in different Workspaces through explicit bindings, and different chats may use a Workspace serially without sharing native Sessions. Scope changes, revoked resources and externally changed file revisions require invalidating affected context. Sprint 2 uses a new context epoch and Session, rebuilt only from still-authorized sources; old transcripts and derived summaries cannot be carried over indiscriminately.
 
-Workspace storage, native Session state and live runtime processes have separate lifecycles. A runtime attaches a Workspace; the Workspace is not the VM itself. Team collaboration is defined by tasks, authorized resources and versioned results, without requiring members to share one VM. Isolation and deployment choices remain separate from Team identity.
+Workspace storage, native Session state and live runtime processes have separate lifecycles. Sprint 2 passes virtual snapshots through a broker; later runtimes may attach filesystem working copies. A Workspace is not the VM itself. Target Team collaboration is defined by tasks, authorized resources and versioned results, without requiring members to share one VM. Isolation and deployment choices remain separate from Team identity.
 
 ## Chat list and chat detail
 
@@ -358,6 +380,8 @@ No general guarantee is made that an arbitrary CLI resumes inside the exact tool
 
 ## Sandbox lifecycle and storage
 
+This section defines the future cloud/repository-execution provider. Sprint 2 instead runs short-lived local Seatbelt data workers over virtual snapshots, without provisioning an OS image, VM or mounted repository. Its supported boundary is the [native runtime review](dependencies/native-runtime.md).
+
 Define a Sandbox Provider interface around create, inspect, connect, stop, destroy, and supported pause/resume operations. Provisioning requests use stable identifiers. A resource reconciler identifies abandoned sandboxes and retires them after checking active leases.
 
 Start with one managed sandbox provider; E2B is a candidate with documented create, connect, pause, resume, and kill lifecycle operations. Evaluate its selected plan, region, retention, network controls, and commercial terms before adoption. See [E2B sandbox lifecycle](https://e2b.dev/docs/sandbox).
@@ -525,7 +549,7 @@ Implement [Sprint 1](sprints/sprint1.md): the TypeScript workspace, dependency g
 
 ### Agent and workspace foundations
 
-Follow [Sprint 2](sprints/sprint2.md) in three milestones: Agent configuration/session boundaries, persistent Workspaces with isolated file tools, and explicit resources/context management. Preserve legacy chat behavior, verify actual runtime isolation and checkpoint recovery, and complete a real Pi file-inspection/editing demonstration. Until that evidence exists, these remain planned capabilities. No group/team scheduler or general shell execution is required.
+[Sprint 2](sprints/sprint2.md) implements Agent configuration/session boundaries, persistent virtual text Workspaces with isolated file operations, and explicit resources/context management. Local regression and native-worker isolation/recovery checks have passed; the real Pi file-inspection/editing demonstration remains unverified because live authentication fails. This is an implementation with an outstanding final acceptance gate. No group/team scheduler or general shell execution is included.
 
 ### Groups and bounded teams
 

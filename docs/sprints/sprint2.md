@@ -1,6 +1,6 @@
 # Sprint 2 Agent and Workspace Foundations
 
-Status: Planned; no Sprint 2 implementation or acceptance is claimed
+Status: Implementation delivered; final live Pi workspace acceptance blocked by provider authentication
 
 Created: 2026-11-05
 
@@ -16,7 +16,7 @@ Deliver three dependency-ordered milestones: **A — Agent configuration and ses
 
 ## Verified starting point
 
-This baseline comes from the current source and Sprint 1 record, reviewed on 2026-11-05. It is not a fresh execution of the test suite or a live provider check.
+This pre-implementation baseline comes from the source and Sprint 1 record reviewed at sprint planning on 2026-11-05. The implementation record below describes subsequent changes and verification; the baseline is retained to show the starting gaps.
 
 | Concept | Current implementation | Sprint 2 change |
 | --- | --- | --- |
@@ -133,3 +133,37 @@ Review every new or upgraded package, transitive/native component, image, downlo
 ## Completion boundary
 
 Sprint 2 is complete when a single configured Agent can use explicit, attributable resources to inspect and update a durable Workspace inside an enforced execution boundary, with independent identity/session/file lifecycles and verified recovery. Team coordination and the infrastructure used to host future teams remain separate follow-up work.
+
+## Implementation record
+
+Implemented and verified locally on 2026-11-05. This sprint is **not signed off as complete**: both the inherited `npm run test:pi` and the new `npm run test:workspace` live checks failed with sanitized upstream errors; the text-only probe classified the provider failure as authentication. No successful live model file edit is claimed.
+
+| Item | Delivered behavior and evidence |
+| --- | --- |
+| S2-01 | Additive migrations preserve legacy chat/native references and introduce profiles, instances, context epochs and Run snapshots without inventing past configuration |
+| S2-02 | Versioned profiles and explicit per-chat bindings, management UI, stale-edit conflicts and independent UI/reply languages |
+| S2-03 | Immutable profile/resource references, runtime identity in scope selection, fresh epochs for incompatible resources/files, and history restricted to the applicable session key |
+| S2-04 | Project/Workspace APIs, bounded text-file import/edit/delete, immutable PostgreSQL file snapshots, revisions and diffs |
+| S2-05 | Reviewed macOS Seatbelt worker, exact Node/system binary checks, actual denial probes, exclusive leases and attempt fencing; no general code-execution sandbox claim |
+| S2-06 | Pi custom file tools over supervised IPC to an authoritative broker; atomic expected-revision writes, idempotent operation ledger, native/Workspace checkpoint pairing and restore; deterministic SDK/API checks pass, live Pi file demonstration remains blocked |
+| S2-07 | Versioned manual knowledge and declarative skills, source/license evidence fields, explicit scope/tool validation and withdrawal guards |
+| S2-08 | Native-history/system/tool input guard, 4096-token output reserve/cap, source manifests and observable tool results; accounting is a conservative byte estimate, not exact tokenizer billing |
+| S2-09 | Local static/build/license and API/browser verification recorded below; final live acceptance remains blocked |
+
+### Selected execution and storage boundary
+
+The Pi/model host and database broker run trusted platform code outside the file worker. The worker executes only platform-owned file-operation code, receives bounded virtual file snapshots, and cannot access the database, credentials, host project directories, network or subprocesses. Imported files are text data and are never evaluated. PostgreSQL is the durable authority; each tool uses a fresh isolated worker and publishes authorized file revisions through the broker. There is no repository mount, shell, build runner or VM.
+
+Workspace execution currently requires the exact reviewed local macOS arm64 runtime and Node **22.20.0**, including the binary hashes in the [native runtime inventory](../dependencies/native-runtime.json). Unsupported or changed runtimes return `SANDBOX_UNAVAILABLE` before model/tool work; ordinary text chats retain their existing Node minimum. The worker has bounded input/output, a five-second lifetime, a 64 MiB V8 heap limit and a small stack; the heap flag is not an OS-level RSS quota. See the [full runtime review](../dependencies/native-runtime.md) for commercial-use scope, preserved external-system terms and limitations.
+
+Completed workspace Runs retain an immutable native JSONL copy paired with the exact durable Workspace revision and scope. If live native files or the manifest are lost, a subsequent compatible Run can restore that pair atomically. Incompatible epochs/revisions are rejected or begin a fresh explicitly scoped Session; uncertain work is never automatically resubmitted. Native paths and transcript contents stay server-side; checkpoint APIs expose opaque native references.
+
+### Verification and runbook
+
+- The main Node regression run passed **113/113** tests without skips, including real PostgreSQL, real Seatbelt enforcement, a synthetic Pi SDK tool loop and synthetic-model end-to-end file workflows. The suite also restores a real SDK native Session after deleting its live directory, checks corrupted manifests/files, and rejects mismatched scopes or tampered sealed copies. Synthetic models are not evidence of successful provider generation.
+- All **22/22** browser scenarios passed: 19 existing chat/settings scenarios plus three Sprint 2 scenarios. Desktop 1440×1000 and Simplified Chinese mobile 390×844 layouts were inspected with no horizontal overflow.
+- Typecheck, lint, production build and the npm license gate passed. The existing 552 locked artifacts are unchanged; no new package, image or binary was installed or bundled. The native runtime has its own review record.
+- Browser checks can avoid existing development servers: `NEXRUN_E2E_API_PORT=3101 NEXRUN_E2E_WEB_PORT=5273 npm run test:e2e`. The fixture uses isolated schemas and temporary state.
+- Configure a valid credential privately through the established configuration path. `npm run test:pi` and `npm run test:workspace` use environment-provided keys, not a saved administration key. The workspace smoke uses a temporary schema/state directory, makes real model requests, verifies read/write/provenance/checkpoint/restart/continuation, and cleans up afterward. It must pass before final sign-off.
+
+Open **Agents & Workspaces** (`/agents-workspaces`) to create a profile, Project and Workspace, import a text file, and select knowledge/skills. Select an existing chat and explicitly apply its profile/resources while idle. Return to the chat to send work; inspect the latest Run's context and file operations on the resource page. An admin token, when configured, is supplied only through the page's in-memory unlock flow. Skill license metadata and allowlists support manual review and do not automatically establish rights to user-imported material.

@@ -1,16 +1,17 @@
 # NexRun
 
-[Simplified Chinese version](README.zh-CN.md) · [Architecture](docs/architecture.md) · [Sprint 1](docs/sprints/sprint1.md) · [Sprint 2 plan](docs/sprints/sprint2.md)
+[Simplified Chinese version](README.zh-CN.md) · [Architecture](docs/architecture.md) · [Sprint 1](docs/sprints/sprint1.md) · [Sprint 2](docs/sprints/sprint2.md)
 
 NexRun is a local, single-owner chat application with a React/shadcn UI, a Node.js API, PostgreSQL persistence, and streamed Agent replies. Sprint 1 provides direct chats with a deterministic mock Adapter and a text-only Pi Adapter. Group chats, Agent Teams, repository execution, and the broader execution infrastructure remain later work.
 
-[Sprint 2](docs/sprints/sprint2.md) plans versioned Agent profiles, explicit identities/session scopes, persistent Workspaces, isolated file tools, and manually enabled knowledge/skills with context manifests. These capabilities are planned and are not part of the current implementation.
+[Sprint 2](docs/sprints/sprint2.md) adds versioned Agent profiles, explicit identities/session scopes, persistent text Workspaces, restricted file tools, and manually enabled knowledge/skills with context manifests. Local implementation and deterministic checks are complete; final acceptance remains unverified because the configured live Pi/OpenAI credential fails authentication. No successful live model-driven workspace edit is claimed.
 
 ## Requirements
 
 - Node.js **22.19.0 or newer**, with npm.
 - Docker with Docker Compose v2 and a running Docker daemon for the development database.
 - macOS or Linux for the current Pi host lifecycle implementation, which uses `/bin/ps` and process signals.
+- Model-driven Workspace file tools additionally require the reviewed macOS arm64 environment with the exact Node **22.20.0** and Apple executable hashes in the [native runtime inventory](docs/dependencies/native-runtime.json). Unsupported or unreviewed runtimes fail closed; ordinary text chat does not require that file worker.
 - An installed Google Chrome for the default local browser tests, or Playwright's matching Chromium installation for CI.
 
 Run the following commands from the repository root. The repository's `.npmrc` pins added dependencies to exact versions and disables package lifecycle scripts, so `npm ci` installs with scripts ignored. Additional installation scripts or binary downloads require their own dependency review.
@@ -62,7 +63,21 @@ Open **Settings** in the sidebar or visit [http://127.0.0.1:5173/admin/settings]
 
 For shared deployments, configure `NEXRUN_ADMIN_TOKEN` and authenticated TLS access. Back up the encryption key with the database; by default it is in `.data/pi/configuration/encryption.key`, or supply a stable 32-byte base64 `NEXRUN_CONFIG_ENCRYPTION_KEY`. See the complete [administration and recovery guide](docs/admin-settings.md) for access rules, credential actions, revision conflicts, model binding, and backups.
 
-## Text-only Pi
+## Agent profiles and Workspaces
+
+Open **Agents & workspaces** in the sidebar, or visit [http://127.0.0.1:5173/agents-workspaces](http://127.0.0.1:5173/agents-workspaces).
+
+1. Under **Agent profiles**, create a reusable role with model/runtime settings, an independent response language, and allowed file operations. Editing creates a revision; existing chats retain their selected revision until a change is explicitly applied. Credentials remain in Settings and are not copied into profiles.
+2. Under **Workspaces**, create a Project and Workspace, then add text using a relative path and the file-content editor. The database stores immutable file revisions; the interface can compare revisions. These are bounded virtual text files, not mounted host directories, imported Git repositories or executable projects.
+3. Under **Knowledge & skills**, add explicitly sourced facts/documents or declarative skill instructions. Choose user, project or workspace scope. Skills require an admitted license and recorded authorization evidence and can require only file operations already allowed by the selected profile. No scripts or automatic discovery run.
+4. Open a chat and select **Chat resources** to bind its profile, optional Workspace, knowledge and skills. Applying a change starts a fresh native-context epoch while preserving visible chat history. Different chats retain independent Agent identities and Sessions even when using the same profile or using a Workspace serially.
+5. With a usable Pi connection, ask the Agent to list, read, search or edit the bound text files. Inspect actual revisions/diffs in **Workspaces**, and the latest Run's source manifest and recorded operations under **Chat resources**. Mock replies remain deterministic fixtures and do not establish real model-driven tool execution.
+
+Workspace Runs hold an exclusive lease; competing live access and edits return a busy result. File writes check the expected revision and operation ID. Source corrections, withdrawals, changed bindings and external file revisions invalidate affected native context. Checkpoints bind a file revision to an immutable copy of compatible native state; keep the database and private Pi state together when backing up.
+
+The local file worker uses deny-by-default macOS Seatbelt enforcement. It receives bounded snapshots over stdin, performs only platform-owned in-memory file operations, and cannot read user host-file contents, write host files, open network connections or create subprocesses. The trusted Pi host and authoritative database broker run outside this worker. Read the [native runtime review](docs/dependencies/native-runtime.md) for exact hashes, readiness probes, resource limits and the deprecated platform interface's limitations. This is a reviewed local implementation, not a VM or general repository-code sandbox.
+
+## Pi runtime and credentials
 
 Use Settings to configure Pi interactively. Before the first explicit settings save, the following private `.env` values also provide the startup defaults:
 
@@ -75,11 +90,11 @@ NEXRUN_OPENAI_API_KEY=replace-with-your-authorized-key
 
 `NEXRUN_OPENAI_API_KEY` takes precedence over `OPENAI_API_KEY`; the latter remains a fallback for server environments. Use an authorized, usable OpenAI API credential. A present environment variable does not prove that authentication, quota, or model access is valid. Keep keys out of chat messages, source files, client environment variables, screenshots, and logs. `.env` is ignored by Git.
 
-Settings-page saves apply without restarting. Environment changes require an API restart; after the first settings save, persisted runtime/model/language choices take precedence over those defaults. Start a new chat after switching between `mock` and `pi` or changing Pi models. Existing history stays readable, and replacing a key for the same Pi model can continue an existing chat.
+Settings-page saves apply without restarting. Environment changes require an API restart; after the first settings save, persisted runtime/model/language choices take precedence over those defaults. Chats using service defaults require a new chat after an incompatible runtime/model change. For explicit profiles, apply the selected profile through **Chat resources** while idle to create a compatible context epoch. Existing history stays readable, and replacing a key for the same Pi model can continue a compatible existing Session.
 
-Pi runs in a dedicated supervised child process for each generation, with an independent persisted native session per conversation. All tools, extensions, hooks, skills, prompt templates, repository instructions, and resource discovery are disabled. Slash-prefixed input remains text. The host receives only the selected model credential and controlled environment settings; it does not read personal Pi authentication or settings. Native session files and manifests stay server-side with restricted permissions.
+Pi runs in a dedicated supervised child process for each generation, with an independent persisted native Session per Agent/context scope. Pure text chats expose no tools. Explicit Workspace bindings can expose only the selected `file.list`, `file.read`, `file.search` and `file.write` tools through the broker and isolated file worker. Knowledge and declarative skills are supplied from accepted resource revisions. Built-in tools, executable extensions/hooks, prompt templates, repository instructions and automatic resource discovery remain disabled. Slash-prefixed input remains text. The host receives only the selected model credential and controlled environment settings; it does not read personal Pi authentication or settings. Native session files and manifests stay server-side with restricted permissions.
 
-This process boundary is not an untrusted-code sandbox. Sprint 1 does not execute repositories, shell commands, browser actions, or user extensions. A future executable-tool integration requires a separate sandbox boundary.
+The Pi child-process boundary alone is not an untrusted-code sandbox. The separate file worker processes bounded data without evaluating imported code. Shell/build commands, repository execution, browser actions and user extensions remain unavailable; those require a separately reviewed execution provider.
 
 Configuration values in `.env.example` include:
 
@@ -113,11 +128,19 @@ npm test
 
 `npm run check` combines those checks. API integration tests create and drop isolated PostgreSQL schemas; `TEST_DATABASE_URL` overrides their default local connection. Pi lifecycle tests use deterministic fixtures and inspect only marked test child processes; restricted environments that prohibit process inspection will fail closed.
 
-For browser scenarios, stop any manually running development servers first: Playwright starts its own API and Web servers, forces mock mode, and requires ports 3001 and 5173. On a local machine with Google Chrome installed:
+Playwright starts isolated test API/Web services, forces mock mode and defaults to ports 3001 and 5173. On a local machine with Google Chrome installed and those ports free:
 
 ```sh
 npm run test:e2e
 ```
+
+To preserve a running development app, select other free test ports:
+
+```sh
+NEXRUN_E2E_API_PORT=3101 NEXRUN_E2E_WEB_PORT=5273 npm run test:e2e
+```
+
+The test server adds the selected loopback Web origin explicitly and uses its own generated database schema and temporary state; the default development configuration is unchanged.
 
 In CI, or when using Playwright's matching Chromium instead of installed Chrome:
 
@@ -135,6 +158,8 @@ npm run test:pi
 ```
 
 The script loads `.env`, requires a valid configured key, and verifies two-turn context, separation from another conversation, native persistence, cancellation, and sanitized configuration failure. It makes real OpenAI requests and may incur usage charges. A missing or unusable credential leaves this verification blocked or failed; mock tests and a mock-only demo do not establish that real Pi integration passed.
+
+On 2026-11-05, typecheck, lint, build, license checks, all **113 Node tests** and all **22 browser scenarios** passed. These include actual local file-worker isolation checks alongside deterministic SDK/model fixtures. Live Pi authentication still failed; final Sprint 2 model-driven workspace acceptance remains unverified. See the [Sprint 2 record](docs/sprints/sprint2.md) for the evidence boundary.
 
 ## Build and local build preview
 
@@ -175,6 +200,7 @@ The project uses [Apache-2.0](LICENSE). Third-party admission follows [the repos
 | Preserved shadcn license | `vendor/shadcn/LICENSE` |
 | CycloneDX SBOM | `docs/dependencies/sbom.cdx.json` |
 | Third-party license and notice text | `THIRD_PARTY_NOTICES.txt` |
+| Existing local OS/Node runtime evidence | `docs/dependencies/native-runtime.json` and [native runtime review](docs/dependencies/native-runtime.md) |
 
 For an addition or upgrade, inspect the actual selected release artifacts, upstream source, LICENSE/NOTICE files, bundled code, and distribution obligations. Include direct, transitive, development, optional/native dependencies, copied sources, assets, and extra downloads. Pin the change and update its evidence before regenerating the records:
 
@@ -183,6 +209,6 @@ npm run licenses:review
 npm run licenses:check
 ```
 
-`licenses:review` can fetch locked artifacts for platforms not installed locally and regenerates the inventory, notices, and SBOM. Review the resulting changes and chosen license branches; do not treat generation as automatic approval. Commit the reviewed lockfile and evidence together. `licenses:check` rejects lockfile/evidence mismatches, unreviewed dependencies, disallowed license expressions, and changes to recorded shadcn sources. Preserve required notices with distributed bundles. Review container images, browser binaries, system components, and hosted-service/model terms separately; the npm gate does not establish all of those rights.
+`licenses:review` can fetch locked artifacts for platforms not installed locally and regenerates the inventory, notices, and SBOM. Review the resulting changes and chosen license branches; do not treat generation as automatic approval. Commit the reviewed lockfile and evidence together. `licenses:check` rejects lockfile/evidence mismatches, unreviewed dependencies, disallowed license expressions, and changes to recorded shadcn sources. Preserve required notices with distributed bundles. Review container images, browser binaries, system components, and hosted-service/model terms separately; the npm gate does not establish all of those rights. User-entered knowledge/skill authorization metadata records declarations; platform dependency findings do not automatically authorize imported third-party content.
 
 Keep this README and its [complete Simplified Chinese edition](README.zh-CN.md) synchronized when shared setup or behavior changes.
