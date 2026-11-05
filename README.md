@@ -1,8 +1,10 @@
 # NexRun
 
-[Simplified Chinese version](README.zh-CN.md) · [Architecture](docs/architecture.md) · [Sprint 1](docs/sprints/sprint1.md)
+[Simplified Chinese version](README.zh-CN.md) · [Architecture](docs/architecture.md) · [Sprint 1](docs/sprints/sprint1.md) · [Sprint 2 plan](docs/sprints/sprint2.md)
 
 NexRun is a local, single-owner chat application with a React/shadcn UI, a Node.js API, PostgreSQL persistence, and streamed Agent replies. Sprint 1 provides direct chats with a deterministic mock Adapter and a text-only Pi Adapter. Group chats, Agent Teams, repository execution, and the broader execution infrastructure remain later work.
+
+[Sprint 2](docs/sprints/sprint2.md) plans versioned Agent profiles, explicit identities/session scopes, persistent Workspaces, isolated file tools, and manually enabled knowledge/skills with context manifests. These capabilities are planned and are not part of the current implementation.
 
 ## Requirements
 

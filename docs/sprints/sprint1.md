@@ -193,9 +193,9 @@ Review exact versions of React, shadcn sources, the selected primitives, Tailwin
 
 No dependency, CI gate, or application feature is considered implemented merely because it appears in this plan.
 
-## Follow-up candidates
+## Planned follow-up
 
-After reviewing Sprint 1, choose the next slice based on observed gaps: stronger authentication and private deployment, repository/sandbox execution, richer single-Agent controls, or group conversations. Agent Teams remain deferred until single-Agent lifecycle, persistence, and permissions are reliable. Preserve the broader architecture as a target without pulling its infrastructure into this sprint.
+[Sprint 2](sprint2.md) plans single-Agent and Workspace foundations: versioned profiles, explicit instances/session scopes, durable Workspaces, isolated file tools, and manual knowledge/declarative skills with context management. It is a separate planned slice, not an expansion of Sprint 1 acceptance or an implementation claim. Its final acceptance must also close the recorded real Pi verification gap. Agent Teams, group conversations and broader infrastructure remain deferred until the single-Agent lifecycle, persistence and permissions are reliable.
 
 ## Implementation record
 

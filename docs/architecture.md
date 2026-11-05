@@ -1,8 +1,8 @@
 # NexRun Architecture
 
-Status: Target architecture; Sprint 1 implementation and acceptance tracked in the sprint plan
+Status: Target architecture; Sprint 1 implementation and Sprint 2 planned scope tracked in their sprint plans
 
-Updated: 2026-11-04
+Updated: 2026-11-05
 
 Language: English
 
@@ -19,6 +19,8 @@ Commercial dependency admission and language conventions are governed by [AGENTS
 [Sprint 1](sprints/sprint1.md) defines the current implementation commitment: React with shadcn/ui, a Node.js service, persisted direct chats, streaming, and one tool-disabled Pi Agent integration alongside a deterministic mock. Agent Teams and group chats are deferred. The sprint does not require executable tools, cloud sandbox infrastructure, Temporal, Valkey, or object storage.
 
 The group, team, and sandbox sections below describe the target architecture for later releases. They are not Sprint 1 acceptance criteria. Text-only development uses a supervised host with tools/resources disabled; add the stronger execution boundary before enabling repository code or tools.
+
+[Sprint 2](sprints/sprint2.md) is the planned next slice: explicit Agent profiles/instances/session scopes, persistent Workspaces, isolated file tools, and manually enabled knowledge/declarative skills with context management. It is not implemented by this architecture update. Group/team execution and VM management remain outside that sprint.
 
 ## Goals and scope
 
@@ -43,7 +45,7 @@ flowchart TB
     Provider["Sandbox Provider\nManaged sandbox first, Firecracker later"]
     Runner["Sandbox Runner\nSupervised Agent host processes"]
     Pi["Pi SDK hosts\nIndependent Leader and worker sessions"]
-    Workspace["Isolated task workspaces\nBranches, toolchains, native Pi state"]
+    Workspace["Isolated task workspaces\nFiles, revisions, artifacts"]
 
     Client <-->|HTTPS and SSE| API
     API --> DB
@@ -96,7 +98,10 @@ The Runner can report scoped execution events and issue authorized team-tool req
 | Task | A versioned work, coordination, or integration unit within a Run, with dependencies, executor, and result contract |
 | AgentSession | Native Pi conversation/context for one AgentInstance and its permitted execution scope |
 | ExecutionAttempt | One leased dispatch of a Task to a Runner, with fencing token and native turn mapping |
-| Workspace | Durable working copy and environment, optionally derived from a Project for a Task |
+| Workspace | Durable working copy and environment specification, independent of the live runtime; optionally derived from a Project for a Run or Task |
+| KnowledgeItem | Versioned fact, preference or document with provenance, access scope and withdrawal state |
+| SkillDefinition | Versioned procedural instructions and reference material with declared tool requirements |
+| ContextManifest | Authorized input references/versions, selection decisions and context-budget metadata for a Run |
 | Approval | Scoped human authorization for an exact operation |
 | Checkpoint and Artifact | Recoverable state and retained, versioned outputs |
 
@@ -109,6 +114,18 @@ An AgentProfile is a recipe, not a global context or credential container. Insta
 Projects are optional when starting a discussion. Execution that needs source files must bind to a Project and authorized Workspace. A group may discuss several projects, but the first repository-enabled release binds each Run to at most one repository; it does not silently combine filesystem or credential scopes.
 
 Workspace mutation requires an exclusive lease, including terminal and auxiliary-tool writes. Concurrent writing Tasks receive independent working copies and normally separate sandboxes. Git worktrees share repository metadata and are not a tenant boundary. Workspace checkpoints include relevant uncommitted and untracked files, not just a repository URL and branch.
+
+### Agent resources and context management
+
+Capabilities comprise Tools and Skills. A Tool exposes an operation; a Skill describes a workflow, constraints and supporting resources that may use several Tools. A Skill does not grant execution authority. Sprint 2 limits Skills to reviewed declarative content and explicitly allowed file tools; executable scripts, extensions and automatic discovery remain deferred.
+
+Knowledge is a separately scoped resource that an Agent can access, rather than an inseparable part of its identity. Keep project facts, user preferences and reference documents versioned and attributable. Chat history records statements, including hypotheses and outdated information; it is not automatically a fact store. System/role instructions define behavior, while retrieved documents, chat content and tool results retain their status as data.
+
+Context management selects authorized rules, task material, resource revisions and relevant files while accounting for native history and tool results. Record a source manifest and distinguish measured from estimated input usage. Limiting only newly injected text does not bound the full model input. Native continuation remains Adapter-owned; do not reconstruct it by replaying the shared timeline.
+
+An AgentInstance may work in different Workspaces through explicit bindings, and different chats may use a Workspace serially without sharing native Sessions. Scope changes, revoked resources and externally changed file revisions require invalidating affected context. Sprint 2 uses a new context epoch and Session, rebuilt only from still-authorized sources; old transcripts and derived summaries cannot be carried over indiscriminately.
+
+Workspace storage, native Session state and live runtime processes have separate lifecycles. A runtime attaches a Workspace; the Workspace is not the VM itself. Team collaboration is defined by tasks, authorized resources and versioned results, without requiring members to share one VM. Isolation and deployment choices remain separate from Team identity.
 
 ## Chat list and chat detail
 
@@ -505,6 +522,10 @@ This layout describes the implementation target. Modules should share typed cont
 ### Chat and Pi foundation
 
 Implement [Sprint 1](sprints/sprint1.md): the TypeScript workspace, dependency gate, React/shadcn chat screens, Node.js APIs, PostgreSQL history, mock streaming, and a tool-disabled Pi host. Validate send, stop, refresh, and reconnect behavior. Full identity and sandbox execution are later slices; the first preview remains access-controlled rather than publicly multi-tenant.
+
+### Agent and workspace foundations
+
+Follow [Sprint 2](sprints/sprint2.md) in three milestones: Agent configuration/session boundaries, persistent Workspaces with isolated file tools, and explicit resources/context management. Preserve legacy chat behavior, verify actual runtime isolation and checkpoint recovery, and complete a real Pi file-inspection/editing demonstration. Until that evidence exists, these remain planned capabilities. No group/team scheduler or general shell execution is required.
 
 ### Groups and bounded teams
 

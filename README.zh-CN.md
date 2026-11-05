@@ -1,8 +1,10 @@
 # NexRun
 
-[英文版](README.md) · [架构文档](docs/architecture.zh-CN.md) · [Sprint 1](docs/sprints/sprint1.zh-CN.md)
+[英文版](README.md) · [架构文档](docs/architecture.zh-CN.md) · [Sprint 1](docs/sprints/sprint1.zh-CN.md) · [Sprint 2 计划](docs/sprints/sprint2.zh-CN.md)
 
 NexRun 是一个本地运行、单一所有者的聊天应用，采用 React/shadcn UI、Node.js API、PostgreSQL 持久化和 Agent 流式回复。Sprint 1 提供私聊、确定性模拟 Adapter 和纯文本 Pi Adapter。群聊、Agent Teams、仓库执行以及更广泛的执行基础设施仍属于后续工作。
+
+[Sprint 2](docs/sprints/sprint2.zh-CN.md) 计划加入版本化 Agent 配置档案、显式身份与会话作用域、持久化 Workspace、隔离环境中的文件工具，以及人工启用的知识/技能和上下文清单。这些能力仍在计划中，不属于当前实现。
 
 ## 环境要求
 
