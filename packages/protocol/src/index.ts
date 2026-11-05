@@ -42,3 +42,5 @@ export interface CredentialCheck {
   checkedAt: string;
   revision: number;
 }
+export type * from './foundations.js';
+export type * from './resources.js';

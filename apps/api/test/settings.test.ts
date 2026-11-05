@@ -39,13 +39,13 @@ function update(store: SettingsStore, changes: Partial<AdminSettingsUpdate> = {}
   return { revision: current.revision, adapter: current.adapter, provider: current.provider, model: current.model, responseLanguage: current.responseLanguage, keyAction: 'keep', ...changes };
 }
 
-test('settings migrations apply both versions, including upgrading an existing version-one database', async (t) => {
+test('settings migrations upgrade version-one settings while retaining later schema versions', async (t) => {
   const f = await fixture(t);
-  assert.deepEqual((await f.pool.query('SELECT version FROM nexrun_migrations ORDER BY version')).rows.map((row) => row.version), [1, 2]);
+  assert.deepEqual((await f.pool.query('SELECT version FROM nexrun_migrations ORDER BY version')).rows.map((row) => row.version), [1, 2, 3, 4]);
   await f.pool.query('DROP TABLE admin_settings; ALTER TABLE agent_sessions DROP COLUMN model, DROP COLUMN provider; DELETE FROM nexrun_migrations WHERE version = 2');
   await migrate(f.pool);
   await migrate(f.pool);
-  assert.deepEqual((await f.pool.query('SELECT version FROM nexrun_migrations ORDER BY version')).rows.map((row) => row.version), [1, 2]);
+  assert.deepEqual((await f.pool.query('SELECT version FROM nexrun_migrations ORDER BY version')).rows.map((row) => row.version), [1, 2, 3, 4]);
   const columns = await f.pool.query("SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'agent_sessions'");
   assert.ok(columns.rows.some((row) => row.column_name === 'model'));
   assert.ok(columns.rows.some((row) => row.column_name === 'provider'));

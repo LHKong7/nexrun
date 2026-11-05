@@ -41,6 +41,8 @@ export async function migrate(pool: Pool): Promise<void> {
   const migrations = await Promise.all([
     [1, '001_initial.sql'],
     [2, '002_admin_settings.sql'],
+    [3, '003_agent_foundations.sql'],
+    [4, '004_resources.sql'],
   ].map(async ([version, file]) => ({ version, sql: await readFile(new URL(`../migrations/${file}`, import.meta.url), 'utf8') })));
   await transaction(pool, async (client) => {
     await client.query("SELECT pg_advisory_xact_lock(hashtext('nexrun-migrations'), hashtext(current_schema()))");
