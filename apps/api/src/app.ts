@@ -12,6 +12,10 @@ import { createPiAdapter } from './agents/pi.js';
 import type { AgentAdapter } from './agents/types.js';
 import { SettingsStore, adminAccess, authorizeAdmin, checkOpenAiCredential, type EffectiveSettings } from './settings.js';
 import { AdmissionGate, RuntimeAdapter } from './runtime.js';
+import { FoundationStore, profileInput } from './foundations.js';
+import { ResourceStore } from './resources.js';
+import { registerResourceRoutes } from './resource-routes.js';
+import { ExecutionBroker } from './execution.js';
 
 export interface BuildAppOptions {
   config?: Partial<ApiConfig>;
@@ -81,8 +85,17 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     const adapter = new RuntimeAdapter(options.adapter ?? factory(settings.getEffective()));
     config.agentMode = adapter.mode;
     const admission = new AdmissionGate();
-    const store = new ChatStore(pool, config);
-    dispatcher = new Dispatcher(store, adapter, config, failClosed);
+    const resources = new ResourceStore(pool, config.ownerId);
+    const foundations = new FoundationStore(pool, config, resources);
+    const store = new ChatStore(pool, config, foundations);
+    const broker = new ExecutionBroker(pool, foundations, resources, failClosed);
+    dispatcher = new Dispatcher(store, adapter, config, failClosed, async (work, input, onText) => {
+      const scope = work.execution;
+      if (!scope?.profile) return broker.generate(work, input, onText, adapter);
+      const selected = options.adapter?.mode === scope.adapter ? options.adapter : factory({ ...settings.getEffective(), adapter: scope.adapter, provider: scope.provider, model: scope.model, responseLanguage: scope.responseLanguage });
+      try { await broker.generate(work, input, onText, selected); }
+      finally { if (selected !== options.adapter) await selected.dispose?.(); }
+    });
     if (options.reconcileOnStart !== false) {
       // Runtime changes do not make hosts from the previous Pi mode disappear.
       // A recovery-only adapter never submits a model request or needs a valid key.
@@ -133,6 +146,41 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     app.setNotFoundHandler((_request, reply) => reply.code(404).send({ error: { code: 'NOT_FOUND', message: 'NOT_FOUND' } } satisfies ApiError));
 
     app.get('/healthz', async () => ({ status: 'ok' }));
+    registerResourceRoutes(app, { store: resources, admission, authorizeMutation: request => { authorizeAdmin(request, config); } });
+    app.get('/api/agent-profiles', async () => ({ profiles: await foundations.listProfiles() }));
+    const checkProfile = async (raw: unknown) => {
+      const parsed = profileInput(raw);
+      if (!(await settings.getPublic(0)).models.some(m => m.id === parsed.model)) validation({ field: 'model' });
+      return parsed;
+    };
+    app.post('/api/agent-profiles', async (request, reply) => {
+      authorizeAdmin(request, config);
+      return admission.run(async () => reply.code(201).send(await foundations.createProfile(await checkProfile(request.body))));
+    });
+    app.patch<{ Params: { id: string } }>('/api/agent-profiles/:id', async request => {
+      authorizeAdmin(request, config);
+      const profileId = id(request.params.id, 'AGENT_PROFILE_NOT_FOUND');
+      const body = object(request.body);
+      if (!Number.isSafeInteger(body.revision) || (body.revision as number) < 1 || body.archived !== undefined && typeof body.archived !== 'boolean') validation();
+      return admission.run(async () => foundations.updateProfile(profileId, body.revision as number, await checkProfile(body), body.archived as boolean | undefined));
+    });
+    app.get<{ Params: { id: string } }>('/api/conversations/:id/agent-binding', async request => foundations.getBinding(id(request.params.id, 'CONVERSATION_NOT_FOUND')));
+    app.patch<{ Params: { id: string } }>('/api/conversations/:id/agent-binding', async request => {
+      authorizeAdmin(request, config);
+      return admission.run(async () => foundations.updateBinding(id(request.params.id, 'CONVERSATION_NOT_FOUND'), request.body));
+    });
+    app.get<{ Params: { id: string } }>('/api/runs/:id/context', async request => {
+      const runId = id(request.params.id, 'RUN_NOT_FOUND');
+      await store.getRun(runId);
+      const result = await pool.query<{ context_manifest: unknown }>('SELECT context_manifest FROM runs WHERE id=$1', [runId]);
+      return result.rows[0]!.context_manifest;
+    });
+    app.get<{ Params: { id: string } }>('/api/runs/:id/tools', async request => {
+      const runId = id(request.params.id, 'RUN_NOT_FOUND');
+      await store.getRun(runId);
+      const result = await pool.query('SELECT operation_id AS id,name,arguments AS args,result,error_code AS "errorCode" FROM run_tool_operations WHERE run_id=$1 ORDER BY created_at,operation_id', [runId]);
+      return { operations: result.rows };
+    });
     app.get('/api/config', async (): Promise<RuntimeConfig> => {
       if (!configurationAvailable) throw new AppError('SETTINGS_UNAVAILABLE', 503);
       return { adapter: adapter.mode, configured: adapter.configured, model: adapter.model, responseLanguage: config.responseLanguage ?? 'auto' };
@@ -227,7 +275,9 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       const accepted = await admission.run(async () => {
         if (!configurationAvailable) throw new AppError('SETTINGS_UNAVAILABLE', 503);
         try {
-          const result = await store.acceptMessage(conversationId, body.content as string, key, adapter.configured);
+          const profile = await foundations.runtime(conversationId);
+          const configured = profile ? profile.adapter === 'mock' || Boolean(settings.getEffective().apiKey) : adapter.configured;
+          const result = await store.acceptMessage(conversationId, body.content as string, key, configured);
           execution.wake();
           return result;
         } catch (error) {

@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "reviewedAt": "2026-11-05",
+  "usageModel": "Existing single-owner local Apple computer; external system runtimes are invoked unmodified and are not included in NexRun artifacts.",
+  "runtime": {
+    "provider": "macos-seatbelt",
+    "os": {
+      "name": "macOS",
+      "version": "26.5.1",
+      "build": "25F80",
+      "architecture": "arm64"
+    },
+    "binary": {
+      "path": "/usr/bin/sandbox-exec",
+      "sha256": "8857d087219f0f39d3e3c163e5d0a0aed690cc22f34b50c7eee3d74f93e69688",
+      "signatureIdentifier": "com.apple.sandbox-exec",
+      "signatureVerification": "codesign --verify --strict succeeded outside the outer development sandbox"
+    },
+    "source": "Apple-provided installed operating-system component",
+    "license": "LicenseRef-Apple-macOS-Tahoe-26",
+    "chosenAuthorizationPath": "Use the already licensed, unmodified OS on this Apple-branded computer. macOS Tahoe 26 SLA sections 1A/1B and 2A/2B(ii) govern applicable installation/commercial-use rights; this review adds no OS installation or copy.",
+    "officialTerms": "https://www.apple.com/legal/sla/docs/macOSTahoe.pdf",
+    "obligations": [
+      "Retain the applicable macOS license and notices; use on properly licensed Apple hardware.",
+      "Do not distribute, modify, sublicense or bundle the Apple executable with NexRun.",
+      "Do not extend this local-use review to service-bureau, terminal-sharing, cloud hosting or OS leasing; review the actual deployment separately."
+    ],
+    "selectedReleaseEvidence": [
+      {
+        "path": "/usr/share/man/man1/sandbox-exec.1",
+        "sha256": "0d264f72dc6a8e0db5474840f33b512542c469beb109ed146c17055da287336b"
+      },
+      {
+        "path": "/usr/share/man/man7/sandbox.7",
+        "sha256": "9043d9296715714f95b4de6c5f88a5436c5cc3b83b62641327212078c5c69b04"
+      }
+    ],
+    "conclusion": "Admitted only for the existing local system execution model; no Apple component is an application-library dependency or redistributed deliverable. The deprecated interface is capability-probed and unavailable hosts fail closed."
+  },
+  "nodeRuntime": {
+    "version": "22.20.0",
+    "architecture": "darwin-arm64",
+    "binarySha256": "49161ba4e67afda85c25b2daa1f0e91d1bffc023d2dbc4886eda7a9ba38bca62",
+    "source": "https://nodejs.org/dist/v22.20.0/",
+    "upstreamLicense": "https://github.com/nodejs/node/blob/v22.20.0/LICENSE",
+    "installedLicenseSha256": "e991d81497a85bb24fc6bffae0a3637a6accd6c6bc5ce1f2c5698bd555cf9d49",
+    "terms": "MIT for Node-owned code together with the exact-release bundled third-party terms in LICENSE; do not characterize the entire release as MIT-only.",
+    "chosenAuthorizationPath": "Invoke the pre-existing unmodified system-supplied Node runtime; no install, download, binary modification or redistribution is introduced.",
+    "obligations": [
+      "Preserve the complete selected release LICENSE if a future deliverable bundles Node.",
+      "Review the actual runtime archive and its bundled components separately before distributing an image or customer-hosted runtime."
+    ],
+    "conclusion": "Existing external runtime use; this record is not admission of a new bundled Node distribution."
+  },
+  "enforcement": {
+    "verified": [
+      "Host sentinel content read denied",
+      "System Data-volume alias content read denied",
+      "Symlink to host sentinel content read denied",
+      "Host file creation denied",
+      "TCP loopback connection denied",
+      "Subprocess creation denied",
+      "Bounded file snapshots read/edited successfully"
+    ],
+    "limitations": [
+      "Trusted Pi/model host and authoritative database broker remain outside the no-network file worker.",
+      "Only platform-owned file-operation code executes; imported project text is never evaluated.",
+      "System library/share files and directory metadata remain readable.",
+      "The 64 MiB V8 heap flag is a heap bound, not an operating-system RSS quota.",
+      "No VM, Linux, shell, build or hostile multi-tenant execution claim is made.",
+      "No container image or extra binary is selected or downloaded."
+    ]
+  }
+}

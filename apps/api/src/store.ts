@@ -1,9 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
-import type { AcceptedMessage, ChatEvent, ChatSnapshot, Conversation, ConversationPage, Message, Run, RunStatus } from '@nexrun/protocol';
+import type { AcceptedMessage, ChatEvent, ChatSnapshot, Conversation, ConversationPage, Message, Run, RunStatus, RunExecutionSnapshot } from '@nexrun/protocol';
 import type { ApiConfig } from './config.js';
 import { transaction } from './db.js';
 import { AppError } from './errors.js';
+import { FoundationStore } from './foundations.js';
+import { ResourceStore } from './resources.js';
 
 interface ConversationRow {
   id: string; title: string; kind: 'direct'; created_at: Date; updated_at: Date; archived_at: Date | null;
@@ -13,6 +15,7 @@ interface RunRow {
   id: string; conversation_id: string; user_message_id: string; assistant_message_id: string;
   adapter: 'mock' | 'pi'; status: RunStatus; error_code: string | null; request_key: string; request_hash: string;
   attempt_id: string | null; created_at: Date; updated_at: Date;
+  execution_snapshot?: RunExecutionSnapshot | null;
 }
 interface MessageRow {
   id: string; conversation_id: string; run_id: string; role: 'user' | 'assistant'; content: string;
@@ -26,7 +29,7 @@ export const toRun = (row: RunRow): Run => ({ id: row.id, conversationId: row.co
 const toMessage = (row: MessageRow): Message => ({ id: row.id, conversationId: row.conversation_id, runId: row.run_id, role: row.role, content: row.content, status: row.status, order: row.order_no, createdAt: iso(row.created_at) });
 
 export class ChatStore {
-  constructor(readonly pool: Pool, private readonly config: ApiConfig) {}
+  constructor(readonly pool: Pool, private readonly config: ApiConfig, private readonly foundations = new FoundationStore(pool, config, new ResourceStore(pool, config.ownerId))) {}
 
   private async conversation(client: PoolClient, id: string, lock = false): Promise<ConversationRow> {
     const result = await client.query<ConversationRow>(`SELECT * FROM conversations WHERE id = $1 AND owner_id = $2${lock ? ' FOR UPDATE' : ''}`, [id, this.config.ownerId]);
@@ -52,6 +55,7 @@ export class ChatStore {
   async createConversation(title?: string): Promise<Conversation> {
     return transaction(this.pool, async (client) => {
       const result = await client.query<ConversationRow>('INSERT INTO conversations (id, owner_id, title, custom_title) VALUES ($1, $2, $3, $4) RETURNING *', [randomUUID(), this.config.ownerId, title ?? 'New chat', title !== undefined]);
+      await this.foundations.ensureBinding(client, result.rows[0]!.id);
       return this.describeConversation(client, result.rows[0]!);
     });
   }
@@ -120,9 +124,13 @@ export class ChatStore {
       if (conversation.archived_at) throw new AppError('CONVERSATION_ARCHIVED', 409);
       if (await this.activeRun(client, conversationId)) throw new AppError('CONVERSATION_BUSY', 409);
       if (!configured) throw new AppError('AGENT_NOT_CONFIGURED', 503);
+      const binding = await this.foundations.ensureBinding(client, conversationId);
+      const profile = binding.profile_id ? await this.foundations.getProfile(binding.profile_id, client, binding.profile_revision!) : null;
       const session = await client.query<{ adapter: string; model: string | null; provider: string | null }>('SELECT adapter, model, provider FROM agent_sessions WHERE conversation_id = $1', [conversationId]);
-      if (session.rows[0] && session.rows[0].adapter !== this.config.agentMode) throw new AppError('AGENT_SESSION_MISMATCH', 409);
-      if (session.rows[0]?.adapter === 'pi' && (session.rows[0].model !== (this.config.model ?? 'gpt-5-mini') || session.rows[0].provider !== this.config.provider)) throw new AppError('AGENT_SESSION_MISMATCH', 409);
+      if (!profile && binding.context_epoch === 0) {
+        if (session.rows[0] && session.rows[0].adapter !== this.config.agentMode) throw new AppError('AGENT_SESSION_MISMATCH', 409);
+        if (session.rows[0]?.adapter === 'pi' && (session.rows[0].model !== (this.config.model ?? 'gpt-5-mini') || session.rows[0].provider !== this.config.provider)) throw new AppError('AGENT_SESSION_MISMATCH', 409);
+      }
       await client.query("SELECT pg_advisory_xact_lock(hashtext('nexrun-admission'), hashtext(current_schema()))");
       const count = await client.query<{ count: string }>('SELECT count(*) FROM runs r JOIN conversations c ON c.id = r.conversation_id WHERE c.owner_id = $1 AND r.status = ANY($2::text[])', [this.config.ownerId, activeStatuses]);
       if (Number(count.rows[0]!.count) >= this.config.maxConcurrentRuns) throw new AppError('SERVICE_BUSY', 429);
@@ -130,10 +138,12 @@ export class ChatStore {
       const userId = randomUUID();
       const assistantId = randomUUID();
       const run = await client.query<RunRow>("INSERT INTO runs (id, conversation_id, user_message_id, assistant_message_id, adapter, status, request_key, request_hash) VALUES ($1, $2, $3, $4, $5, 'queued', $6, $7) RETURNING *", [runId, conversationId, userId, assistantId, this.config.agentMode, key, hash]);
+      const snapshot = await this.foundations.prepareRun(client, conversationId, runId);
+      run.rows[0]!.adapter = snapshot.adapter;
       await client.query("INSERT INTO messages (id, conversation_id, run_id, role, content, status, order_no) VALUES ($1, $2, $3, 'user', $4, 'completed', $5), ($6, $2, $3, 'assistant', '', 'pending', $7)", [userId, conversationId, runId, content, conversation.next_message_order + 1, assistantId, conversation.next_message_order + 2]);
       const defaultTitle = Array.from(content.trim().replace(/\s+/gu, ' ')).slice(0, 72).join('');
       await client.query('UPDATE conversations SET next_message_order = next_message_order + 2, title = $2, updated_at = clock_timestamp() WHERE id = $1', [conversationId, !conversation.custom_title && conversation.next_message_order === 0 ? defaultTitle : conversation.title]);
-      await client.query("INSERT INTO agent_sessions (conversation_id, adapter, native_session_ref, persistence_location, model, provider) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (conversation_id) DO NOTHING", [conversationId, this.config.agentMode, conversationId, this.config.agentMode === 'pi' ? this.config.stateDir : null, this.config.agentMode === 'pi' ? this.config.model ?? 'gpt-5-mini' : null, this.config.agentMode === 'pi' ? this.config.provider : null]);
+      await client.query("INSERT INTO agent_sessions (conversation_id, adapter, native_session_ref, persistence_location, model, provider,agent_instance_id,context_epoch) VALUES ($1, $2, $3, $4, $5, $6,$7,$8) ON CONFLICT (conversation_id) DO NOTHING", [conversationId, snapshot.adapter, snapshot.sessionKey, snapshot.adapter === 'pi' ? this.config.stateDir : null, snapshot.adapter === 'pi' ? snapshot.model : null, snapshot.adapter === 'pi' ? snapshot.provider : null, snapshot.agentInstanceId, snapshot.contextEpoch]);
       await client.query('INSERT INTO command_outbox (id, run_id) VALUES ($1, $2)', [randomUUID(), runId]);
       const accepted = await this.accepted(client, run.rows[0]!, 0);
       accepted.cursor = await this.emit(client, conversationId, 'message.accepted', { userMessage: accepted.userMessage, assistantMessage: accepted.assistantMessage, run: accepted.run });
@@ -172,7 +182,7 @@ export class ChatStore {
     return result.rows.map((row) => row.id);
   }
 
-  async startRun(id: string): Promise<{ run: Run; attemptId: string; prompt: string; history: Array<{ role: 'user' | 'assistant'; content: string }> } | null> {
+  async startRun(id: string): Promise<{ run: Run; attemptId: string; prompt: string; history: Array<{ role: 'user' | 'assistant'; content: string }>; execution: RunExecutionSnapshot | null } | null> {
     return transaction(this.pool, async (client) => {
       const row = await this.lockRun(client, id);
       if (row.status !== 'queued') return null;
@@ -181,12 +191,13 @@ export class ChatStore {
       if (!claim.rowCount) return null;
       const result = await client.query<RunRow>("UPDATE runs SET status = 'running', attempt_id = $2, updated_at = clock_timestamp() WHERE id = $1 RETURNING *", [id, attemptId]);
       const user = await client.query<MessageRow>('SELECT * FROM messages WHERE id = $1', [row.user_message_id]);
-      const history = await client.query<MessageRow>("SELECT * FROM messages WHERE conversation_id = $1 AND order_no < $2 AND content <> '' ORDER BY order_no DESC LIMIT 100", [row.conversation_id, user.rows[0]!.order_no]);
+      const execution = row.execution_snapshot ?? null;
+      const history = await client.query<MessageRow>("SELECT m.* FROM messages m JOIN runs r ON r.id=m.run_id WHERE m.conversation_id = $1 AND m.order_no < $2 AND m.content <> '' AND ($3::text IS NULL OR r.execution_snapshot->>'sessionKey'=$3 OR ($4 AND r.execution_snapshot IS NULL)) ORDER BY m.order_no DESC LIMIT 100", [row.conversation_id, user.rows[0]!.order_no, execution?.sessionKey ?? null, execution?.contextEpoch === 0]);
       await client.query("UPDATE messages SET status = 'streaming' WHERE id = $1", [row.assistant_message_id]);
       await client.query("UPDATE agent_sessions SET state = 'running', updated_at = clock_timestamp() WHERE conversation_id = $1", [row.conversation_id]);
       const run = toRun(result.rows[0]!);
       await this.emit(client, row.conversation_id, 'run.updated', { run });
-      return { run, attemptId, prompt: user.rows[0]!.content, history: history.rows.reverse().map((message) => ({ role: message.role, content: message.content })) };
+      return { run, attemptId, prompt: user.rows[0]!.content, history: history.rows.reverse().map((message) => ({ role: message.role, content: message.content })), execution };
     });
   }
 
@@ -202,6 +213,7 @@ export class ChatStore {
   }
 
   private async finishLocked(client: PoolClient, row: RunRow, status: 'completed' | 'failed' | 'cancelled' | 'interrupted', text: string | null, errorCode: string | null): Promise<Run> {
+    await this.foundations.finish(client, row.id, status);
     const result = await client.query<RunRow>('UPDATE runs SET status = $2, error_code = $3, updated_at = clock_timestamp() WHERE id = $1 RETURNING *', [row.id, status, status === 'cancelled' ? null : errorCode]);
     const message = await client.query<MessageRow>('UPDATE messages SET status = $2, content = COALESCE($3, content) WHERE id = $1 RETURNING *', [row.assistant_message_id, status, text]);
     await client.query("UPDATE command_outbox SET state = 'retired', updated_at = clock_timestamp() WHERE run_id = $1", [row.id]);

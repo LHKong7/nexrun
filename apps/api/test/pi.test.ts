@@ -255,3 +255,14 @@ test('Pi exposes only enumerated failure diagnostics without raw authentication 
   assert.equal(classifyPiDiagnostic({ message: 'fetch failed' }), 'network');
   assert.equal(classifyPiDiagnostic({ diagnostic: 'private-provider-content' }), 'unknown');
 });
+
+test('Pi supervisor stops immediately when native session persistence fails before completion', async () => {
+  await withHost(`process.on('message', request => {
+    if(request.type==='abort') process.exit(0);
+    process.send({type:'ready',runId:request.runId,activeTools:[],resourcesDisabled:true,session:{id:'native-one',file:'/private/native-one.jsonl',version:3,sdkVersion:'1.5.0'}});
+  });`, async (child, directory) => {
+    await assert.rejects(supervisePiHost(child, request(directory), new AbortController().signal, async () => {}, undefined, {
+      execute: async () => ({}), onNativeSession: async () => { throw new Error('Database write failed.'); },
+    }), { code: 'RUN_INTERRUPTED' });
+  });
+});

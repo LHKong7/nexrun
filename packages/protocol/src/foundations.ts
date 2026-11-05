@@ -28,4 +28,5 @@ export interface RunExecutionSnapshot {
   workspaceId: string | null; workspaceRevision: number | null; fencingToken: number | null;
   toolNames: FileToolName[]; roleInstructions: string; resourcesText: string; contextBudget: number;
   manifest: ContextManifest;
+  runtimeIdentity?: { nodeVersion: string; nodeSha256: string; sandboxSha256: string; policySha256: string };
 }

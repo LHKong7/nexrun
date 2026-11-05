@@ -1,13 +1,14 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
-import { chmod, mkdir, open, realpath } from 'node:fs/promises';
-import { join, sep } from 'node:path';
+import { chmod, mkdir, open, readFile, realpath, rename } from 'node:fs/promises';
+import { basename, dirname, join, sep } from 'node:path';
 import type { Pool, PoolClient } from 'pg';
 import type { AgentBinding, AgentBindingInput, AgentProfile, AgentProfileInput, FileToolName, RunExecutionSnapshot, ResourceItem } from '@nexrun/protocol';
 import type { ApiConfig } from './config.js';
 import { AppError, validation } from './errors.js';
 import { transaction } from './db.js';
 import { ResourceStore } from './resources.js';
+import { piConversationDirectory } from './agents/pi.js';
 
 interface BindingRow {
   conversation_id: string; agent_instance_id: string; profile_id: string | null; profile_revision: number | null;
@@ -110,7 +111,7 @@ export class FoundationStore {
       const p = v.profileId ? await this.getProfile(v.profileId, client) : null;
       if (p?.archivedAt) throw new AppError('AGENT_PROFILE_ARCHIVED', 409);
       if (v.workspaceId) await this.resources.getWorkspace(v.workspaceId, client);
-      await this.resources.validateBindings(client, v.knowledgeIds, v.skillIds, p?.toolNames ?? [], v.workspaceId);
+      await this.resources.validateBindings(client, v.knowledgeIds, v.skillIds, v.workspaceId ? p?.toolNames ?? [] : [], v.workspaceId);
       await client.query('UPDATE agent_bindings SET profile_id=$2,profile_revision=$3,workspace_id=$4,knowledge_ids=$5,skill_ids=$6 WHERE conversation_id=$1', [conversationId, v.profileId, p?.revision ?? null, v.workspaceId, JSON.stringify(v.knowledgeIds), JSON.stringify(v.skillIds)]);
       return bindingValue(await this.newEpoch(client, await this.ensureBinding(client, conversationId)));
     });
@@ -127,14 +128,14 @@ export class FoundationStore {
   async prepareRun(client: PoolClient, conversationId: string, runId: string): Promise<RunExecutionSnapshot> {
     let b = await this.ensureBinding(client, conversationId);
     const profile = b.profile_id ? await this.getProfile(b.profile_id, client, b.profile_revision!) : null;
-    const selected: ResourceItem[] = await this.resources.validateBindings(client, b.knowledge_ids, b.skill_ids, profile?.toolNames ?? [], b.workspace_id);
+    const selected: ResourceItem[] = await this.resources.validateBindings(client, b.knowledge_ids, b.skill_ids, b.workspace_id ? profile?.toolNames ?? [] : [], b.workspace_id);
+    const lease = b.workspace_id ? await this.resources.acquireWorkspace(client, b.workspace_id, runId) : null;
     const workspace = b.workspace_id ? await this.resources.getWorkspace(b.workspace_id, client) : null;
     const signature = createHash('sha256').update(JSON.stringify({ profile: profile ? [profile.id, profile.revision] : null,
       runtime: [profile?.adapter ?? this.config.agentMode, 'openai', profile?.model ?? this.config.model ?? 'gpt-5-mini'],
       resources: selected.map(r => [r.id, r.revision]), workspace: b.workspace_id })).digest('hex');
     if (b.scope_signature && (b.scope_signature !== signature || workspace && b.last_workspace_revision !== null && b.last_workspace_revision !== workspace.revision)) b = await this.newEpoch(client, b);
     await client.query('UPDATE agent_bindings SET scope_signature=$2 WHERE conversation_id=$1', [conversationId, signature]);
-    const lease = workspace ? await this.resources.acquireWorkspace(client, workspace.id, runId) : null;
     const snapshot: RunExecutionSnapshot = {
       agentInstanceId: b.agent_instance_id, sessionKey: b.session_key, contextEpoch: b.context_epoch, profile,
       adapter: profile?.adapter ?? this.config.agentMode, provider: 'openai', model: profile?.model ?? this.config.model ?? 'gpt-5-mini',
@@ -160,6 +161,46 @@ export class FoundationStore {
       await client.query('UPDATE agent_session_epochs SET native_reference=$2 WHERE session_key=$1', [snapshot.sessionKey, reference]);
       await client.query('UPDATE agent_sessions SET native_session_ref=$2,persistence_location=$3,runtime_version=$4 WHERE agent_instance_id=$1 AND context_epoch=$5', [snapshot.agentInstanceId, reference.id, reference.file, reference.sdkVersion, snapshot.contextEpoch]);
     });
+  }
+
+  /** Restore only the native state paired with this exact durable Workspace/context revision. */
+  async restoreNativeCheckpoint(snapshot: RunExecutionSnapshot): Promise<void> {
+    if (!snapshot.workspaceId || snapshot.adapter !== 'pi') return;
+    const result = await this.pool.query<{ manifest: { contextEpoch: number; workspaceRevision: number }; run_id: string; native_reference: { id: string; file: string; version: number; sdkVersion: string; sha256?: string }; conversation_id: string; live_reference: { file: string } | null }>(
+      'SELECT c.manifest,c.run_id,r.native_reference,r.conversation_id,e.native_reference AS live_reference FROM workspace_checkpoints c JOIN runs r ON r.id=c.run_id JOIN agent_session_epochs e ON e.session_key=$2::uuid WHERE c.workspace_id=$1 AND r.execution_snapshot->>\'sessionKey\'=$2::text ORDER BY c.created_at DESC,c.id DESC LIMIT 1', [snapshot.workspaceId, snapshot.sessionKey]);
+    const checkpoint = result.rows[0];
+    if (!checkpoint) return;
+    if (checkpoint.manifest.contextEpoch !== snapshot.contextEpoch || checkpoint.manifest.workspaceRevision !== snapshot.workspaceRevision || !checkpoint.native_reference || !checkpoint.live_reference) throw new AppError('NATIVE_SESSION_UNAVAILABLE', 409);
+    const stateRoot = await realpath(this.config.stateDir);
+    const directory = piConversationDirectory(stateRoot, snapshot.sessionKey);
+    const sessions = join(directory, 'sessions');
+    const liveFile = checkpoint.live_reference.file;
+    if (dirname(liveFile) !== sessions || !basename(liveFile).endsWith('.jsonl')) throw new AppError('NATIVE_SESSION_UNAVAILABLE', 409);
+    const sealed = join(stateRoot, 'checkpoints', `${checkpoint.run_id}.jsonl`);
+    if (await realpath(checkpoint.native_reference.file) !== sealed) throw new AppError('NATIVE_SESSION_UNAVAILABLE', 409);
+    const saved = await readFile(sealed);
+    if (createHash('sha256').update(saved).digest('hex') !== checkpoint.native_reference.sha256) throw new AppError('NATIVE_SESSION_UNAVAILABLE', 409);
+    const current = await readFile(liveFile).catch(() => null);
+    const manifestPath = join(directory, 'native-session.json');
+    const expectedManifest = { schemaVersion: 1, conversationId: checkpoint.conversation_id,
+      nativeSessionId: checkpoint.native_reference.id, nativeSessionFile: liveFile, nativeSessionVersion: checkpoint.native_reference.version,
+      sdkVersion: checkpoint.native_reference.sdkVersion, provider: snapshot.provider, model: snapshot.model, lastRunId: checkpoint.run_id, state: 'completed' };
+    const liveManifest = await readFile(manifestPath, 'utf8').then(text => {
+      try { return JSON.parse(text) as Record<string, unknown>; } catch { return null; }
+    }, () => null);
+    const manifestMatches = liveManifest && Object.entries(expectedManifest).every(([key, value]) => liveManifest[key] === value);
+    if (current?.equals(saved) && manifestMatches) return;
+    await mkdir(sessions, { recursive: true, mode: 0o700 });
+    const writeAtomic = async (path: string, bytes: Buffer): Promise<void> => {
+      const temporary = `${path}.${randomUUID()}.tmp`;
+      const file = await open(temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o600);
+      try { await file.writeFile(bytes); await file.sync(); } finally { await file.close(); }
+      await rename(temporary, path);
+      const parent = await open(dirname(path), constants.O_RDONLY);
+      try { await parent.sync(); } finally { await parent.close(); }
+    };
+    await writeAtomic(liveFile, saved);
+    await writeAtomic(manifestPath, Buffer.from(JSON.stringify(expectedManifest)));
   }
 
   async finish(client: PoolClient, runId: string, status: string): Promise<void> {
@@ -189,12 +230,15 @@ export class FoundationStore {
         const output = await open(target, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o600);
         try { await output.writeFile(bytes); await output.sync(); }
         finally { await output.close(); }
-        await client.query('UPDATE runs SET native_reference=$2 WHERE id=$1', [runId, { ...native, file: target }]);
+        const parent = await open(directory, constants.O_RDONLY);
+        try { await parent.sync(); } finally { await parent.close(); }
+        await client.query('UPDATE runs SET native_reference=$2 WHERE id=$1', [runId, { ...native, file: target, sha256: createHash('sha256').update(bytes).digest('hex') }]);
       }
       await this.resources.createCheckpoint(client, { workspaceId: snapshot.workspaceId, runId, fencingToken: snapshot.fencingToken!, manifest: {
         workspaceRevision: workspace.revision, nativeSessionRef: native ? `native:${runId}` : null,
         contextEpoch: snapshot.contextEpoch, profileRevision: snapshot.profile?.revision ?? null,
         resources: snapshot.manifest.sources.map(r => ({ id: r.id, revision: r.revision })), runtimeVersion: 'macos-seatbelt-file-worker-v1', adapterVersion: result.rows[0]?.native_reference?.sdkVersion ?? 'mock-v1',
+        ...(snapshot.runtimeIdentity ? { runtimeIdentity: snapshot.runtimeIdentity } : {}),
       } });
       await client.query('UPDATE agent_bindings SET last_workspace_revision=$2 WHERE agent_instance_id=$1 AND context_epoch=$3', [snapshot.agentInstanceId, workspace.revision, snapshot.contextEpoch]);
     } else {

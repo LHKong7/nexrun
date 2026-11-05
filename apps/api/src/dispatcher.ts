@@ -1,6 +1,7 @@
 import type { AgentAdapter } from './agents/types.js';
 import type { ApiConfig } from './config.js';
 import { ChatStore } from './store.js';
+import type { RunGenerator } from './execution.js';
 
 type AbortReason = 'cancelled' | 'timeout' | 'shutdown' | 'output_limit' | 'persistence';
 interface ActiveExecution { controller: AbortController; reason?: AbortReason; done: Promise<void> }
@@ -11,7 +12,7 @@ export class Dispatcher {
   private requested = false;
   private closed = false;
 
-  constructor(private readonly store: ChatStore, private readonly adapter: AgentAdapter, private readonly config: ApiConfig, private readonly onPersistenceFailure?: () => void) {}
+  constructor(private readonly store: ChatStore, private readonly adapter: AgentAdapter, private readonly config: ApiConfig, private readonly onPersistenceFailure?: () => void, private readonly generate?: RunGenerator) {}
 
   get activeCount(): number { return this.active.size; }
   get busy(): boolean { return this.closed || this.draining || this.active.size > 0; }
@@ -89,7 +90,9 @@ export class Dispatcher {
       execution.controller.signal.throwIfAborted();
       // Adapters settle only after observing termination. Pi enforces a kill deadline
       // in its supervisor; do not release this slot merely because abort was requested.
-      await this.adapter.generate({ conversationId: run.conversationId, runId: run.id, prompt: work.prompt, history: work.history, signal: execution.controller.signal }, async (cumulativeText) => {
+      const input = { conversationId: run.conversationId, runId: run.id, prompt: work.prompt, history: work.history, signal: execution.controller.signal };
+      const generate = this.generate ? this.generate.bind(undefined, work) : this.adapter.generate.bind(this.adapter);
+      await generate(input, async (cumulativeText) => {
           if (!acceptingText) return;
           if (cumulativeText.length > this.config.maxOutputCharacters) {
             text = cumulativeText.slice(0, this.config.maxOutputCharacters);
@@ -117,7 +120,7 @@ export class Dispatcher {
       await writes.catch(() => undefined);
       const code = error !== null && typeof error === 'object' && 'code' in error ? String(error.code) : '';
       const isAbort = error instanceof Error && error.name === 'AbortError';
-      const allowedCodes = ['UPSTREAM_RATE_LIMITED', 'AGENT_NOT_CONFIGURED', 'UPSTREAM_ERROR', 'NATIVE_SESSION_UNAVAILABLE', 'GENERATION_TIMEOUT'];
+      const allowedCodes = ['UPSTREAM_RATE_LIMITED', 'AGENT_NOT_CONFIGURED', 'UPSTREAM_ERROR', 'NATIVE_SESSION_UNAVAILABLE', 'GENERATION_TIMEOUT', 'SANDBOX_UNAVAILABLE', 'SANDBOX_FAILED', 'CONTEXT_LIMIT', 'WORKSPACE_CONFLICT', 'STALE_EXECUTION', 'TOOL_NOT_ALLOWED'];
       if (execution.reason === 'shutdown' || code === 'RUN_INTERRUPTED') await this.store.finishRun(run.id, attemptId, 'interrupted', text, 'RUN_INTERRUPTED');
       else if (execution.reason === 'cancelled' && (isAbort || !code)) await this.store.finishRun(run.id, attemptId, 'cancelled', text);
       else await this.store.finishRun(run.id, attemptId, 'failed', text, execution.reason === 'timeout' ? 'GENERATION_TIMEOUT' : execution.reason === 'output_limit' ? 'OUTPUT_LIMIT_EXCEEDED' : allowedCodes.includes(code) ? code : 'UPSTREAM_ERROR');

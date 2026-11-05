@@ -76,6 +76,7 @@ export interface CheckpointManifest {
   resources: ResourceReference[];
   runtimeVersion: string;
   adapterVersion: string;
+  runtimeIdentity?: { nodeVersion: string; nodeSha256: string; sandboxSha256: string; policySha256: string };
 }
 export interface WorkspaceCheckpoint {
   id: string;

@@ -5,8 +5,10 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
-import type { AgentAdapter, AgentInput } from './types.js';
+import type { AgentAdapter, AgentExecution, AgentInput, NativeSessionReference } from './types.js';
 import type { ResponseLanguage } from '@nexrun/protocol';
+import { workspaceToolAliases } from './workspace-tools.js';
+import type { WorkspaceOperation } from './sandbox.js';
 
 export interface PiAdapterOptions {
   stateDir: string;
@@ -28,11 +30,13 @@ export interface PiHostRequest {
   hasPriorHistory: boolean;
   generationTimeoutMs: number;
   responseLanguage?: ResponseLanguage;
+  execution?: AgentExecution;
 }
 
 const ERROR_CODES = new Set([
   'AGENT_NOT_CONFIGURED', 'UPSTREAM_RATE_LIMITED', 'UPSTREAM_ERROR',
   'RUN_INTERRUPTED', 'GENERATION_TIMEOUT', 'VALIDATION_ERROR',
+  'CONTEXT_LIMIT', 'SANDBOX_UNAVAILABLE', 'WORKSPACE_LIMIT',
 ]);
 
 export type PiFailureDiagnostic = 'authentication' | 'rate_limit' | 'network' | 'configuration' | 'unknown';
@@ -153,6 +157,7 @@ export function supervisePiHost(
   signal: AbortSignal,
   onText: (text: string) => Promise<void>,
   beforeDispatch?: () => Promise<void>,
+  tools?: { execute: (operation: WorkspaceOperation) => Promise<unknown>; onNativeSession?: (reference: NativeSessionReference) => Promise<void> },
 ): Promise<void> {
   return new Promise((resolveResult, rejectResult) => {
     let ready = false;
@@ -166,6 +171,8 @@ export function supervisePiHost(
     let flushing: Promise<void> | undefined;
     let stopTimer: ReturnType<typeof setTimeout> | undefined;
     let killTimer: ReturnType<typeof setTimeout> | undefined;
+    let toolWork = Promise.resolve();
+    let nativeWork = Promise.resolve();
 
     const finish = async (): Promise<void> => {
       if (!exited || settled) return;
@@ -175,6 +182,8 @@ export function supervisePiHost(
       clearTimeout(killTimer);
       signal.removeEventListener('abort', onAbort);
       try {
+        await toolWork;
+        await nativeWork;
         while (flushing) await flushing;
         if (latestText !== undefined && (!failure || preservePendingOutput) && (!stopping || preservePendingOutput)) {
           await onText(latestText);
@@ -218,6 +227,15 @@ export function supervisePiHost(
       });
     };
 
+    const recordNativeSession = (raw: unknown): void => {
+      if (!tools?.onNativeSession || raw === undefined) return;
+      if (!raw || typeof raw !== 'object') { stop(new PiAdapterError('RUN_INTERRUPTED')); return; }
+      const value = raw as Record<string, unknown>;
+      if (typeof value.id !== 'string' || value.id.length > 100 || typeof value.file !== 'string' || value.file.length > 4096 || !value.file.startsWith('/') || !value.file.endsWith('.jsonl') || !Number.isSafeInteger(value.version) || typeof value.sdkVersion !== 'string' || value.sdkVersion.length > 100) { stop(new PiAdapterError('RUN_INTERRUPTED')); return; }
+      const reference = value as unknown as NativeSessionReference;
+      nativeWork = nativeWork.then(() => tools.onNativeSession!(reference)).catch(() => { stop(new PiAdapterError('RUN_INTERRUPTED')); });
+    };
+
     const onAbort = (): void => { if (!terminal) stop(cancelledError()); };
     const lifetime = setTimeout(() => { if (!terminal) stop(new PiAdapterError('GENERATION_TIMEOUT')); }, request.generationTimeoutMs);
     lifetime.unref();
@@ -228,9 +246,28 @@ export function supervisePiHost(
       const message = raw as Record<string, unknown>;
       if (message.runId !== request.runId) return;
       if (message.type === 'ready') {
-        if (!Array.isArray(message.activeTools) || message.activeTools.length !== 0 || message.resourcesDisabled !== true) {
+        const expectedTools = request.execution ? workspaceToolAliases(request.execution.toolNames) : [];
+        if (!Array.isArray(message.activeTools) || JSON.stringify([...message.activeTools].sort()) !== JSON.stringify([...expectedTools].sort()) || message.resourcesDisabled !== true) {
           stop(new PiAdapterError('RUN_INTERRUPTED'));
-        } else ready = true;
+        } else {
+          ready = true;
+          recordNativeSession(message.session);
+        }
+      } else if (message.type === 'tool' && !stopping && !terminal) {
+        const operation = message.operation as WorkspaceOperation | undefined;
+        if (!ready || !tools || !request.execution || !operation || typeof operation.id !== 'string' || operation.id.length > 200 || !request.execution.toolNames.includes(operation.name) || !operation.args || typeof operation.args !== 'object' || Array.isArray(operation.args) || Buffer.byteLength(JSON.stringify(operation.args)) > 150000) {
+          stop(new PiAdapterError('RUN_INTERRUPTED')); return;
+        }
+        toolWork = toolWork.then(async () => {
+          if (stopping || exited || signal.aborted) return;
+          let response: object;
+          try { response = { type: 'tool_result', runId: request.runId, id: operation.id, result: await tools.execute(operation) }; }
+          catch (error) {
+            const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string' ? error.code : 'TOOL_FAILED';
+            response = { type: 'tool_result', runId: request.runId, id: operation.id, error: /^[A-Z_]{1,80}$/.test(code) ? code : 'TOOL_FAILED' };
+          }
+          if (!stopping && !exited && child.connected) child.send(response, () => {});
+        }).catch(() => stop(new PiAdapterError('RUN_INTERRUPTED')));
       } else if (message.type === 'text' && !stopping && !terminal) {
         if (!ready || typeof message.text !== 'string' || Buffer.byteLength(message.text) > 2_000_000) {
           stop(new PiAdapterError('RUN_INTERRUPTED'));
@@ -248,6 +285,7 @@ export function supervisePiHost(
           return;
         }
         terminal = message.status;
+        recordNativeSession(message.session);
         // A wedged host must not keep the API's execution slot forever after acknowledging completion.
         stopTimer ??= setTimeout(() => {
           child.kill('SIGTERM');
@@ -314,7 +352,7 @@ export function createPiAdapter(options: PiAdapterOptions): AgentAdapter {
       const relayAbort = (): void => controller.abort();
       input.signal.addEventListener('abort', relayAbort, { once: true });
       const promise = (async () => {
-        const conversationDir = piConversationDirectory(options.stateDir, input.conversationId);
+        const conversationDir = piConversationDirectory(options.stateDir, input.execution?.sessionKey ?? input.conversationId);
         await mkdir(resolve(options.stateDir), { recursive: true, mode: 0o700 });
         await chmod(resolve(options.stateDir), 0o700);
         await mkdir(conversationDir, { recursive: true, mode: 0o700 });
@@ -337,10 +375,11 @@ export function createPiAdapter(options: PiAdapterOptions): AgentAdapter {
           conversationDir, model, provider, prompt: input.prompt,
           hasPriorHistory: input.history.length > 0, generationTimeoutMs: timeout,
           responseLanguage,
+          ...(input.execution ? { execution: input.execution } : {}),
         }, controller.signal, onText, async () => {
           if (!child.pid) throw new PiAdapterError('RUN_INTERRUPTED');
           await recordHost(registryPath, { schemaVersion: 1, pid: child.pid, marker, runId: input.runId });
-        }); } finally { await rm(registryPath, { force: true }); }
+        }, input.toolExecutor ? { execute: input.toolExecutor, ...(input.onNativeSession ? { onNativeSession: input.onNativeSession } : {}) } : input.onNativeSession ? { execute: async () => { throw new PiAdapterError('RUN_INTERRUPTED'); }, onNativeSession: input.onNativeSession } : undefined); } finally { await rm(registryPath, { force: true }); }
       })();
       active.set(input.conversationId, { controller, promise });
       try { await promise; }
