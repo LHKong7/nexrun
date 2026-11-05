@@ -551,3 +551,82 @@ button svg { flex-shrink: 0; }
 .admin-select-menu [data-slot="select-item"][data-disabled] { opacity: .5; cursor: not-allowed; }
 .admin-select-menu [data-slot="select-scroll-up-button"], .admin-select-menu [data-slot="select-scroll-down-button"] { min-height: 22px; padding: 3px; color: #83996e; background: #fff; }
 .admin-select-menu [data-slot="select-scroll-up-button"] svg, .admin-select-menu [data-slot="select-scroll-down-button"] svg { width: 13px; height: 13px; }
+
+/* Agent profiles, workspace files and explicitly enabled resources. */
+.aw-content { width: min(100%, 1160px); }
+.aw-sections { display: flex; flex-wrap: wrap; gap: 5px; padding: 5px; margin: 0 0 19px; border-radius: 9px; border: 1px solid #e1e8d9; background: #f2f6ec; }
+.aw-sections button { font-size: 11px; height: 34px; flex: 1 1 auto; color: #6a7e58; }
+.aw-sections button[aria-current="page"] { background: white; color: #385a32; box-shadow: 0 1px 3px #29451c12; }
+.aw-two-column { display: grid; grid-template-columns: minmax(220px, .78fr) minmax(0, 1.42fr); gap: 19px; align-items: start; }
+.aw-two-column > * { min-width: 0; }
+.aw-card-heading { display: flex; gap: 10px; justify-content: space-between; align-items: center; }
+.aw-card-heading > [data-slot="card-title"] { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.aw-card-heading button, .aw-actions button, .aw-form > button, .aw-workspace-options button, .aw-diff-form button { font-size: 11px; gap: 6px; }
+.aw-form { display: grid; gap: 17px; }
+.aw-form textarea { min-height: 100px; font-size: 12px; line-height: 1.8; color: #4b6143; background: #fcfdf9; border-color: #d9e2ce; }
+.aw-form fieldset { border: 1px solid #e3e9db; border-radius: 8px; padding: 10px 13px 13px; min-width: 0; }
+.aw-form legend { font-size: 11px; padding: 0 5px; color: #61754f; }
+.aw-check-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px 17px; }
+.aw-check { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.aw-check > label { font-size: 11px; color: #657a54; line-height: 1.7; cursor: pointer; overflow-wrap: anywhere; }
+.aw-check > label small { display: block; color: #8a987d; font-size: 10px; }
+.aw-actions { display: flex; flex-wrap: wrap; gap: 9px; }
+.aw-list { display: grid; gap: 4px; max-height: 520px; overflow-y: auto; }
+.aw-list-item { display: flex; justify-content: flex-start; gap: 9px; width: 100%; height: auto; min-height: 45px; text-align: left; padding: 9px 10px; white-space: normal; font-size: 12px; color: #5c7450; }
+.aw-list-item > span:first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.aw-list-item small { display: block; margin-top: 4px; font-size: 10px; color: #92a084; }
+.aw-list-item [data-slot="badge"] { margin-left: auto; font-size: 9px; }
+.aw-workspace-stack { display: grid; gap: 20px; }
+.aw-project-list { display: grid; gap: 5px; margin-top: 18px; padding-top: 12px; border-top: 1px solid #e9eee3; }
+.aw-project-list > div { display: flex; align-items: center; justify-content: space-between; gap: 9px; font-size: 12px; color: #627954; overflow-wrap: anywhere; }
+.aw-project-list button { font-size: 10px; flex-shrink: 0; }
+.aw-workspace-options { display: flex; gap: 9px; flex-wrap: wrap; }
+.aw-workspace-options button { max-width: 100%; height: auto; min-height: 35px; white-space: normal; overflow-wrap: anywhere; }
+.aw-workspace-options small { color: #8c9b7d; font-size: 9px; }
+.aw-code-input { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.aw-file-path { overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.aw-kind-picker { display: flex; gap: 5px; margin: 0 0 17px; }
+.aw-kind-picker button { font-size: 12px; }
+.aw-resource-checks { display: grid; gap: 15px; }
+.aw-binding-meta { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 0 0 20px; color: #869677; font-size: 11px; }
+.aw-binding-meta [data-slot="badge"] { font-size: 10px; }
+.aw-diff-form { display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap; }
+.aw-diff-form .admin-field { flex: 1 1 110px; }
+.aw-diff-form button { min-height: 39px; }
+.aw-diff-list { margin-top: 19px; }
+.aw-diff { border: 1px solid #dde5d4; border-radius: 8px; overflow: hidden; margin-bottom: 15px; }
+.aw-diff h3 { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; margin: 0; padding: 10px 13px; background: #f3f7ed; font-size: 11px; color: #61774f; overflow-wrap: anywhere; }
+.aw-diff > div { display: grid; grid-template-columns: 1fr 1fr; }
+.aw-diff section { min-width: 0; }
+.aw-diff section + section { border-left: 1px solid #e2e9db; }
+.aw-diff h4 { margin: 0; padding: 7px 12px; font-size: 10px; font-weight: 500; color: #80916e; border-bottom: 1px solid #e9eee2; }
+.aw-diff pre { margin: 0; padding: 12px; max-height: 350px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; line-height: 1.7; color: #5b7050; }
+.aw-unlock { margin-bottom: 22px; }
+.aw-unlock-form { display: flex; align-items: flex-end; gap: 12px; }
+.aw-unlock-form .admin-field { flex: 1; }
+.aw-unlock-form button { height: 39px; }
+.aw-chat-resources { color: #748767; gap: 6px; font-size: 10px; }
+@media (max-width: 767px) {
+  .aw-two-column { grid-template-columns: 1fr; gap: 16px; }
+  .aw-content { padding-left: 16px; padding-right: 16px; }
+  .aw-sections button { flex-basis: calc(50% - 5px); font-size: 11px; }
+  .aw-page .aw-form textarea { font-size: 16px; }
+  .aw-diff > div { grid-template-columns: 1fr; }
+  .aw-diff section + section { border-left: 0; border-top: 1px solid #e2e9db; }
+  .aw-chat-resources { width: 32px; padding: 5px; }
+  .aw-chat-resources span { display: none; }
+  .aw-unlock-form { align-items: stretch; flex-direction: column; }
+  .aw-page .admin-mobile-language { min-width: 125px; }
+}
+.aw-context-card { margin-top: 20px; }
+.aw-context-sources { display: grid; gap: 8px; margin: 15px 0; }
+.aw-context-sources > div { border: 1px solid #e4ebdc; border-radius: 7px; padding: 10px 12px; color: #617851; font-size: 11px; }
+.aw-context-sources strong { font-weight: 500; margin-right: 9px; }
+.aw-context-sources [data-slot="badge"] { font-size: 9px; }
+.aw-context-sources p { margin: 6px 0 0; color: #8b997d; font-size: 10px; overflow-wrap: anywhere; }
+.aw-subheading { margin: 22px 0 12px; font-size: 13px; font-weight: 500; color: #5e764d; }
+.aw-tool-operations details { border: 1px solid #e0e8d6; padding: 11px 13px; border-radius: 7px; margin-top: 10px; color: #657c54; font-size: 11px; }
+.aw-tool-operations summary { cursor: pointer; }
+.aw-tool-operations summary [data-slot="badge"] { font-size: 9px; margin-left: 9px; }
+.aw-tool-operations h4 { font-size: 10px; font-weight: 500; margin: 13px 0 5px; }
+.aw-tool-operations pre { margin: 0; padding: 10px; background: #f5f8ef; border-radius: 5px; max-height: 300px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 10px; line-height: 1.8; }

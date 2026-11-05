@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { ChatEvent, Conversation, Message, Run, RuntimeConfig } from '@nexrun/protocol';
-import { ArrowDown, ArrowLeft, ArrowUp, Archive, ChevronDown, ChevronRight, CircleAlert, Copy, Globe2, Lightbulb, MessageSquare, Pencil, PenLine, Plus, RefreshCw, Settings2, Sparkles, Square, X } from 'lucide-react';
+import { ArrowDown, ArrowLeft, ArrowUp, Archive, Boxes, ChevronDown, ChevronRight, CircleAlert, Copy, Globe2, Lightbulb, MessageSquare, Pencil, PenLine, Plus, RefreshCw, Settings2, Sparkles, Square, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -20,6 +20,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { ConversationDialog, type ConversationAction } from './components/ConversationDialog';
 import { MarkdownMessage } from './components/MarkdownMessage';
 import { AdminSettingsPage } from './components/AdminSettingsPage';
+import { AgentWorkspacePage } from './components/AgentWorkspacePage';
 import { api, RequestError } from './lib/api';
 import { errorKey, translate, type Locale, type TranslationKey } from './lib/i18n';
 
@@ -30,6 +31,7 @@ const activeStatuses = new Set(['queued', 'running', 'cancelling']);
 const terminalStatuses = new Set(['completed', 'failed', 'cancelled', 'interrupted']);
 const isActive = (run: Run | null | undefined) => Boolean(run && activeStatuses.has(run.status));
 const readPath = () => /^\/chat\/([^/]+)\/?$/.exec(window.location.pathname)?.[1] ?? null;
+const isResourcesPath = () => window.location.pathname.replace(/\/$/, '') === '/agents-workspaces';
 const isAdminPath = () => window.location.pathname.replace(/\/$/, '') === '/admin/settings';
 const draftKey = (id: string) => `nexrun:draft:${id}`;
 function readDraft(id: string) { try { return sessionStorage.getItem(draftKey(id)) ?? ''; } catch { return ''; } }
@@ -65,7 +67,9 @@ export default function App() {
   const t = useCallback((key: TranslationKey) => translate(locale, key), [locale]);
   const [selectedId, setSelectedId] = useState<string | null>(readPath);
   const [adminOpen, setAdminOpen] = useState(isAdminPath);
-  const [adminReturnId, setAdminReturnId] = useState<string | null>(() => isAdminPath() && typeof window.history.state?.returnChatId === 'string' ? window.history.state.returnChatId : null);
+  const [resourcesOpen, setResourcesOpen] = useState(isResourcesPath);
+  const [resourcesSection, setResourcesSection] = useState<'profiles' | 'binding'>('profiles');
+  const [adminReturnId, setAdminReturnId] = useState<string | null>(() => (isAdminPath() || isResourcesPath()) && typeof window.history.state?.returnChatId === 'string' ? window.history.state.returnChatId : null);
   const savedChatScroll = useRef(0);
   const selectedRef = useRef(selectedId);
   selectedRef.current = selectedId;
@@ -113,8 +117,8 @@ export default function App() {
   }, [locale]);
   useEffect(() => {
     const handler = () => {
-      const admin = isAdminPath(); setAdminOpen(admin);
-      if (admin) setAdminReturnId(typeof window.history.state?.returnChatId === 'string' ? window.history.state.returnChatId : selectedRef.current);
+      const admin = isAdminPath(); const resources = isResourcesPath(); setAdminOpen(admin); setResourcesOpen(resources);
+      if (admin || resources) setAdminReturnId(typeof window.history.state?.returnChatId === 'string' ? window.history.state.returnChatId : selectedRef.current);
       else setSelectedId(readPath());
     };
     window.addEventListener('popstate', handler);
@@ -130,18 +134,24 @@ export default function App() {
   const navigate = useCallback((id: string | null) => {
     const path = id ? `/chat/${encodeURIComponent(id)}` : '/';
     if (window.location.pathname !== path) window.history.pushState({}, '', path);
-    setSelectedId(id); setAdminOpen(false);
+    setSelectedId(id); setAdminOpen(false); setResourcesOpen(false);
   }, []);
   const navigateAdmin = useCallback(() => {
     savedChatScroll.current = scrollRef.current?.scrollTop ?? 0;
     const id = selectedRef.current;
     setAdminReturnId(id);
     if (!isAdminPath()) window.history.pushState({ returnChatId: id }, '', '/admin/settings');
-    setAdminOpen(true);
+    setAdminOpen(true); setResourcesOpen(false);
+  }, []);
+  const navigateResources = useCallback((binding = false) => {
+    savedChatScroll.current = scrollRef.current?.scrollTop ?? 0;
+    const id = selectedRef.current; setAdminReturnId(id); setResourcesSection(binding ? 'binding' : 'profiles');
+    if (!isResourcesPath()) window.history.pushState({ returnChatId: id }, '', '/agents-workspaces');
+    setResourcesOpen(true); setAdminOpen(false);
   }, []);
   useLayoutEffect(() => {
-    if (!adminOpen && scrollRef.current) scrollRef.current.scrollTop = savedChatScroll.current;
-  }, [adminOpen]);
+    if (!adminOpen && !resourcesOpen && scrollRef.current) scrollRef.current.scrollTop = savedChatScroll.current;
+  }, [adminOpen, resourcesOpen]);
   const refreshList = useCallback(async () => {
     try {
       const page = await api.conversations();
@@ -357,7 +367,7 @@ export default function App() {
     </Button>
   </Card>)}</div>;
 
-  return <Toaster closeLabel={t('dismiss')} viewportLabel={t('notifications')}><TooltipProvider><SidebarProvider className={`app-shell${selectedId && !adminOpen ? ' detail-open' : ''}${adminOpen ? ' admin-open' : ''}`}>
+  return <Toaster closeLabel={t('dismiss')} viewportLabel={t('notifications')}><TooltipProvider><SidebarProvider className={`app-shell${selectedId && !adminOpen && !resourcesOpen ? ' detail-open' : ''}${adminOpen || resourcesOpen ? ' admin-open' : ''}`}>
     <a className="skip-link" href="#conversation-main">{t('skipToChat')}</a>
     <Sidebar collapsible="none" className="sidebar" role="complementary" aria-label={t('sidebarLabel')}>
       <SidebarHeader className="chat-sidebar-header">
@@ -369,8 +379,8 @@ export default function App() {
         <ScrollArea className="conversation-list" viewportProps={{ className: 'conversation-list-viewport' }}>
           <nav aria-label={t('sidebarLabel')}>
             {listLoading ? <div className="list-skeleton" role="status" aria-label={t('loadingChats')}>{[1, 2, 3].map(value => <div key={value}><Skeleton /><Skeleton /></div>)}</div> : conversations.length === 0 && !listError ? <Empty className="sidebar-empty"><EmptyHeader><EmptyMedia variant="icon"><MessageSquare size={23} strokeWidth={1.4} /></EmptyMedia><EmptyTitle>{t('noChats')}</EmptyTitle><EmptyDescription>{t('noChatsHint')}</EmptyDescription></EmptyHeader></Empty> : <SidebarMenu>
-              {conversations.map(conversation => <SidebarMenuItem className={`conversation-row${conversation.id === selectedId && !adminOpen ? ' selected' : ''}`} key={conversation.id}>
-                <SidebarMenuButton render={<a href={`/chat/${encodeURIComponent(conversation.id)}`} />} className="conversation-link" isActive={conversation.id === selectedId && !adminOpen} aria-current={conversation.id === selectedId && !adminOpen ? 'page' : undefined} onClick={event => { if (event.ctrlKey || event.metaKey || event.shiftKey) return; event.preventDefault(); navigate(conversation.id); }}>
+              {conversations.map(conversation => <SidebarMenuItem className={`conversation-row${conversation.id === selectedId && !adminOpen && !resourcesOpen ? ' selected' : ''}`} key={conversation.id}>
+                <SidebarMenuButton render={<a href={`/chat/${encodeURIComponent(conversation.id)}`} />} className="conversation-link" isActive={conversation.id === selectedId && !adminOpen && !resourcesOpen} aria-current={conversation.id === selectedId && !adminOpen && !resourcesOpen ? 'page' : undefined} onClick={event => { if (event.ctrlKey || event.metaKey || event.shiftKey) return; event.preventDefault(); navigate(conversation.id); }}>
                   <MessageSquare size={16} className="conversation-icon" strokeWidth={1.7} /><span className="conversation-text"><span className="conversation-title">{conversation.title || t('untitled')}</span><span className="conversation-preview">{conversation.preview || t('newConversation')}</span></span>{isActive(conversation.activeRun) && <span className="activity-dot" aria-label={t('generating')} />}
                 </SidebarMenuButton>
                 <div className="conversation-actions">
@@ -388,13 +398,13 @@ export default function App() {
       <SidebarFooter className="sidebar-footer admin-sidebar-footer"><div className="sidebar-footer-main">
         <div className="workspace-label"><Avatar className="workspace-avatar"><AvatarFallback>N</AvatarFallback></Avatar><span><strong>{t('privatePreview')}</strong><span><i />{t(config?.adapter === 'pi' ? 'agentPi' : config?.adapter === 'mock' ? 'mockMode' : 'connecting')}</span></span></div>
         <div className="language-picker"><Globe2 size={15} /><Select items={[{ value: 'en', label: t('english') }, { value: 'zh-CN', label: t('chinese') }]} value={locale} onValueChange={value => { if (value === 'en' || value === 'zh-CN') setLocale(value); }}><SelectTrigger className="language-trigger" aria-label={t('language')}><SelectValue /></SelectTrigger><SelectContent className="language-menu" side="top" align="start" alignItemWithTrigger={false}><SelectItem value="en">{t('english')}</SelectItem><SelectItem value="zh-CN">{t('chinese')}</SelectItem></SelectContent></Select></div>
-      </div><SidebarMenu className="settings-navigation"><SidebarMenuItem><SidebarMenuButton render={<a href="/admin/settings" />} className="settings-navigation-link" isActive={adminOpen} aria-current={adminOpen ? 'page' : undefined} onClick={event => { if (event.ctrlKey || event.metaKey || event.shiftKey) return; event.preventDefault(); navigateAdmin(); }}><Settings2 size={16} /><span>{t('adminSettings')}</span></SidebarMenuButton></SidebarMenuItem></SidebarMenu>
+      </div><SidebarMenu className="settings-navigation"><SidebarMenuItem><SidebarMenuButton render={<a href="/agents-workspaces" />} className="settings-navigation-link" isActive={resourcesOpen} aria-current={resourcesOpen ? 'page' : undefined} onClick={event => { if (event.ctrlKey || event.metaKey || event.shiftKey) return; event.preventDefault(); navigateResources(); }}><Boxes size={16} /><span>{t('agentWorkspaceNav')}</span></SidebarMenuButton></SidebarMenuItem><SidebarMenuItem><SidebarMenuButton render={<a href="/admin/settings" />} className="settings-navigation-link" isActive={adminOpen} aria-current={adminOpen ? 'page' : undefined} onClick={event => { if (event.ctrlKey || event.metaKey || event.shiftKey) return; event.preventDefault(); navigateAdmin(); }}><Settings2 size={16} /><span>{t('adminSettings')}</span></SidebarMenuButton></SidebarMenuItem></SidebarMenu>
       </SidebarFooter>
     </Sidebar>
 
-    <main className={`chat-main${adminOpen ? ' admin-main' : ''}`} id="conversation-main" tabIndex={-1}>
-      {adminOpen ? <AdminSettingsPage locale={locale} onLocaleChange={setLocale} t={t} backLabel={adminReturnId ? t('adminBackToChat') : t('home')} onBack={() => navigate(adminReturnId)} onSaved={() => { void api.config().then(setConfig).catch(() => { /* Runtime metadata is retried on the next list refresh. */ }); void refreshList(); }} /> : <>
-      <header className="chat-header"><div className="chat-heading"><Button className="mobile-back" variant="ghost" size="icon" onClick={() => navigate(null)} aria-label={t('home')}><ArrowLeft size={19} /></Button><div className="header-icon"><MessageSquare size={18} strokeWidth={1.6} /></div><div><h1>{selectedId ? currentConversation?.title || t('conversation') : t('newConversation')}</h1><p>{t('directChat')}<span>·</span>{t('textOnly')}</p></div></div><div className="header-status"><Badge variant="secondary" className="agent-pill"><Avatar className="agent-pill-icon"><AvatarFallback>π</AvatarFallback></Avatar>{agentName}</Badge>{selectedId && <Badge variant="outline" className={`connection-pill ${connection}`} role="status"><i />{t(connection === 'idle' ? 'connecting' : connection)}</Badge>}</div></header>
+    <main className={`chat-main${adminOpen || resourcesOpen ? ' admin-main' : ''}`} id="conversation-main" tabIndex={-1}>
+      {resourcesOpen ? <AgentWorkspacePage key={`${adminReturnId ?? 'home'}:${resourcesSection}`} locale={locale} onLocaleChange={setLocale} t={t} onBack={() => navigate(adminReturnId)} chatId={adminReturnId} initialSection={resourcesSection} onChanged={() => { void refreshList(); setRefreshVersion(value => value + 1); }} /> : adminOpen ? <AdminSettingsPage locale={locale} onLocaleChange={setLocale} t={t} backLabel={adminReturnId ? t('adminBackToChat') : t('home')} onBack={() => navigate(adminReturnId)} onSaved={() => { void api.config().then(setConfig).catch(() => { /* Runtime metadata is retried on the next list refresh. */ }); void refreshList(); }} /> : <>
+      <header className="chat-header"><div className="chat-heading"><Button className="mobile-back" variant="ghost" size="icon" onClick={() => navigate(null)} aria-label={t('home')}><ArrowLeft size={19} /></Button><div className="header-icon"><MessageSquare size={18} strokeWidth={1.6} /></div><div><h1>{selectedId ? currentConversation?.title || t('conversation') : t('newConversation')}</h1><p>{t('directChat')}<span>·</span>{t('textOnly')}</p></div></div><div className="header-status">{selectedId && <Button variant="ghost" size="sm" className="aw-chat-resources" aria-label={t('awBinding')} onClick={() => navigateResources(true)}><Boxes size={15} /><span>{t('awBinding')}</span></Button>}<Badge variant="secondary" className="agent-pill"><Avatar className="agent-pill-icon"><AvatarFallback>π</AvatarFallback></Avatar>{agentName}</Badge>{selectedId && <Badge variant="outline" className={`connection-pill ${connection}`} role="status"><i />{t(connection === 'idle' ? 'connecting' : connection)}</Badge>}</div></header>
 
       {!selectedId ? <Empty className="home-screen"><div className="welcome-content"><div className="welcome-eyebrow"><Separator />NEXRUN<Separator /></div><div className="welcome-symbol"><BrandMark /></div><h2>{t('hello')}</h2><p className="welcome-description">{t('welcomeHint')}</p><Button className="welcome-start" onClick={() => void createChat()} disabled={creating}>{creating ? <Spinner className="spin" aria-label={t('loading')} /> : <Plus size={17} />}{t('startChat')}<ArrowUp className="diagonal-arrow" size={17} /></Button>{suggestionCards}<div className="welcome-footnote"><span className="tiny-status-dot" />{config?.adapter === 'mock' ? t('mockDescription') : config?.adapter === 'pi' ? t('piDescription') : t('loading')}</div></div><div className="home-bottom-note">{t('autoSaved')}</div></Empty> : <>
         <ScrollArea className="timeline" viewportRef={scrollRef} viewportProps={{ className: 'timeline-viewport', role: 'region', 'aria-label': t('timelineLabel'), onScroll: event => { const element = event.currentTarget; nearBottomRef.current = element.scrollHeight - element.scrollTop - element.clientHeight < 100; if (nearBottomRef.current) setHasNewOutput(false); } }}>

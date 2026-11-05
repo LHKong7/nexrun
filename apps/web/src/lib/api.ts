@@ -1,4 +1,10 @@
-import type { AcceptedMessage, AdminAccess, AdminSettings, AdminSettingsUpdate, ApiError, ChatSnapshot, Conversation, ConversationPage, CredentialCheck, Run, RuntimeConfig } from '@nexrun/protocol';
+import type { AgentProfile, AgentProfileInput, AgentBinding, AgentBindingInput, ContextManifest, Project, Workspace, WorkspaceSnapshot, WorkspaceWrite, WorkspaceDiff, ResourceItem, ResourceInput, ResourceUpdate, AcceptedMessage, AdminAccess, AdminSettings, AdminSettingsUpdate, ApiError, ChatSnapshot, Conversation, ConversationPage, CredentialCheck, Run, RuntimeConfig } from '@nexrun/protocol';
+
+export type { AgentProfileInput } from '@nexrun/protocol';
+export type AgentProfileView = AgentProfile;
+export type AgentBindingView = AgentBinding;
+export type AgentBindingUpdate = AgentBindingInput;
+export interface ToolOperationView { id: string; name: string; args: unknown; result: unknown; errorCode: string | null; }
 
 export class RequestError extends Error {
   readonly code: string;
@@ -36,6 +42,25 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 const adminHeaders = (token?: string): Record<string, string> => token ? { Authorization: `Bearer ${token}` } : {};
 
 export const api = {
+  runContext: (id: string, signal?: AbortSignal) => request<ContextManifest | null>(`/api/runs/${encodeURIComponent(id)}/context`, { signal }),
+  runTools: (id: string, signal?: AbortSignal) => request<{ operations: ToolOperationView[] }>(`/api/runs/${encodeURIComponent(id)}/tools`, { signal }),
+  agentProfiles: (signal?: AbortSignal) => request<{ profiles: AgentProfileView[] }>('/api/agent-profiles', { signal }),
+  createAgentProfile: (profile: AgentProfileInput, token?: string) => request<AgentProfileView>('/api/agent-profiles', { method: 'POST', headers: adminHeaders(token), body: JSON.stringify(profile) }),
+  updateAgentProfile: (id: string, profile: AgentProfileInput & { revision: number; archived?: boolean }, token?: string) => request<AgentProfileView>(`/api/agent-profiles/${encodeURIComponent(id)}`, { method: 'PATCH', headers: adminHeaders(token), body: JSON.stringify(profile) }),
+  agentBinding: (id: string, signal?: AbortSignal) => request<AgentBindingView>(`/api/conversations/${encodeURIComponent(id)}/agent-binding`, { signal }),
+  updateAgentBinding: (id: string, binding: AgentBindingUpdate, token?: string) => request<AgentBindingView>(`/api/conversations/${encodeURIComponent(id)}/agent-binding`, { method: 'PATCH', headers: adminHeaders(token), body: JSON.stringify(binding) }),
+  projects: (signal?: AbortSignal) => request<{ projects: Project[] }>('/api/projects', { signal }),
+  createProject: (name: string, token?: string) => request<Project>('/api/projects', { method: 'POST', headers: adminHeaders(token), body: JSON.stringify({ name }) }),
+  updateProject: (id: string, change: { name?: string; archived?: boolean }, token?: string) => request<Project>(`/api/projects/${encodeURIComponent(id)}`, { method: 'PATCH', headers: adminHeaders(token), body: JSON.stringify(change) }),
+  workspaces: (signal?: AbortSignal) => request<{ workspaces: Workspace[] }>('/api/workspaces', { signal }),
+  createWorkspace: (name: string, projectId: string, token?: string) => request<Workspace>('/api/workspaces', { method: 'POST', headers: adminHeaders(token), body: JSON.stringify({ name, projectId }) }),
+  updateWorkspace: (id: string, change: { name?: string; archived?: boolean }, token?: string) => request<Workspace>(`/api/workspaces/${encodeURIComponent(id)}`, { method: 'PATCH', headers: adminHeaders(token), body: JSON.stringify(change) }),
+  workspaceFiles: (id: string, revision?: number, signal?: AbortSignal) => request<WorkspaceSnapshot>(`/api/workspaces/${encodeURIComponent(id)}/files${revision === undefined ? '' : `?revision=${revision}`}`, { signal }),
+  writeWorkspaceFiles: (id: string, write: WorkspaceWrite, token?: string) => request<WorkspaceSnapshot>(`/api/workspaces/${encodeURIComponent(id)}/files`, { method: 'POST', headers: adminHeaders(token), body: JSON.stringify(write) }),
+  workspaceDiff: (id: string, from: number, to: number, signal?: AbortSignal) => request<WorkspaceDiff>(`/api/workspaces/${encodeURIComponent(id)}/diff?from=${from}&to=${to}`, { signal }),
+  resources: (kind: 'knowledge' | 'skill', signal?: AbortSignal) => request<{ items: ResourceItem[] }>(kind === 'skill' ? '/api/skills' : '/api/knowledge', { signal }),
+  createResource: (kind: 'knowledge' | 'skill', input: ResourceInput, token?: string) => request<ResourceItem>(kind === 'skill' ? '/api/skills' : '/api/knowledge', { method: 'POST', headers: adminHeaders(token), body: JSON.stringify(input) }),
+  updateResource: (kind: 'knowledge' | 'skill', id: string, update: ResourceUpdate, token?: string) => request<ResourceItem>(`${kind === 'skill' ? '/api/skills' : '/api/knowledge'}/${encodeURIComponent(id)}`, { method: 'PATCH', headers: adminHeaders(token), body: JSON.stringify(update) }),
   adminAccess: (signal?: AbortSignal) => request<AdminAccess>('/api/admin/access', { signal }),
   adminSettings: (token?: string, signal?: AbortSignal) => request<AdminSettings>('/api/admin/settings', { headers: adminHeaders(token), signal }),
   updateAdminSettings: (settings: AdminSettingsUpdate, token?: string, signal?: AbortSignal) => request<AdminSettings>('/api/admin/settings', { method: 'PATCH', headers: adminHeaders(token), body: JSON.stringify(settings), signal }),

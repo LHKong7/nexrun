@@ -18,10 +18,18 @@ let schemaCreated = false;
 let stopping = false;
 let shutdownPromise: Promise<void> | undefined;
 
+function testPort(value: string | undefined, fallback: number): number {
+  if (value === undefined) return fallback;
+  if (!/^[0-9]+$/.test(value) || Number(value) < 1024 || Number(value) > 65535) throw new Error('Invalid browser-test port.');
+  return Number(value);
+}
+
 async function initialize(): Promise<void> {
   // Browser settings tests use only synthetic credentials. No inherited key is
   // supplied to a model, and the injected Pi adapter cannot create a host.
   const config = loadConfig();
+  const apiPort = testPort(process.env.NEXRUN_E2E_API_PORT, 3001);
+  const webPort = testPort(process.env.NEXRUN_E2E_WEB_PORT, 5173);
   adminPool = new Pool({ connectionString: config.databaseUrl, max: 1, connectionTimeoutMillis: 5_000 });
   await adminPool.query(`CREATE SCHEMA ${schema}`);
   schemaCreated = true;
@@ -31,7 +39,7 @@ async function initialize(): Promise<void> {
   pool = new Pool({ connectionString: config.databaseUrl, options: `-c search_path=${schema}`, max: 10, connectionTimeoutMillis: 5_000 });
   app = await buildApp({
     pool,
-    config: { ...config, host: '127.0.0.1', port: 3001, agentMode: 'mock', responseLanguage: 'auto', adminToken: undefined, encryptionKey: randomBytes(32).toString('base64'), stateDir },
+    config: { ...config, host: '127.0.0.1', port: apiPort, allowedOrigins: [...new Set([...config.allowedOrigins, `http://127.0.0.1:${webPort}`])], agentMode: 'mock', responseLanguage: 'auto', adminToken: undefined, encryptionKey: randomBytes(32).toString('base64'), stateDir },
     settingsEnvironment: { NEXRUN_OPENAI_API_KEY: 'e2e-env-key-placeholder-not-real' },
     adapterFactory(settings) {
       if (settings.adapter === 'mock') return createMockAdapter({ responseLanguage: settings.responseLanguage });
@@ -47,7 +55,7 @@ async function initialize(): Promise<void> {
   });
   app.server.once('close', () => { if (!stopping) void shutdown(); });
   if (stopping) return;
-  await app.listen({ host: '127.0.0.1', port: 3001 });
+  await app.listen({ host: '127.0.0.1', port: apiPort });
   if (!stopping) process.stdout.write('E2E API ready.\n');
 }
 

@@ -1,7 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import type { AcceptedMessage, AdminSettings, AdminSettingsUpdate, CredentialCheck, RuntimeConfig, Run } from '@nexrun/protocol';
 
-const originHeaders = { Origin: 'http://127.0.0.1:5173' };
+const originHeaders = { Origin: `http://127.0.0.1:${process.env.NEXRUN_E2E_WEB_PORT ?? '5173'}` };
 const settingsKeys = ['revision', 'adapter', 'provider', 'model', 'responseLanguage', 'keyConfigured', 'keySource', 'environmentKeyAvailable', 'updatedAt', 'activeRuns', 'models'].sort();
 
 function assertSafeSettings(value: AdminSettings, secrets: string[] = []) {
